@@ -6,6 +6,7 @@ Everything here works from `game/index.html`, so results always match the releas
 
 - Node.js 18 or later
 - For browser tests: Python 3, `pip install playwright`, then `python -m playwright install chromium`, and PHP 7.4+ (`php -S`)
+- On Windows: `winget install PHP.PHP.8.4` and `winget install Git.Git`; run `py -m pip install playwright` from a terminal opened from the Start menu (not from inside the Claude app, whose installs only it can see)
 
 ## Rules engine
 
@@ -33,6 +34,15 @@ cd tools/browser-tests
 ./serve.sh &               # test copy of game/ at http://localhost:8772 (test password pw123)
 python3 test_local.py      # single device, feedback, game logs, replay, pass-and-play change
 python3 test_online.py     # host and guest in two browsers, both change a choice, results must match
+```
+
+On Windows, run the server in one PowerShell window and the tests in another:
+
+```
+cd tools\browser-tests
+powershell -ExecutionPolicy Bypass -File .\serve.ps1   # same as serve.sh; Ctrl+C stops it
+py test_local.py
+py test_online.py
 ```
 
 ## Restoring after a lost workspace

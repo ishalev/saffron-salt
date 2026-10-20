@@ -30,7 +30,7 @@ Read this first in every session. It replaces the context that used to live in I
 A release isn't done until every step is complete.
 
 1. Make the changes in `game/` (and `tools/` if needed). Bump `RULES_VERSION`.
-2. Run `node tools/extract-engine.mjs`, `node tools/selftest.mjs`, then the browser tests (`tools/browser-tests/serve.sh`, `test_local.py`, `test_online.py`). Add or update tests for new behavior. All must pass.
+2. Run `node tools/extract-engine.mjs`, `node tools/selftest.mjs`, then the browser tests (`tools/browser-tests/serve.sh`, or `serve.ps1` on Windows; then `test_local.py`, `test_online.py`; Windows commands in [tools/README.md](tools/README.md)). Add or update tests for new behavior. All must pass.
 3. Update `RELEASES.md` (one line), `docs/DECISIONS.md` (decision row, closed items, any test results), and `docs/RULES.md` if rules changed.
 4. Commit with message `vX.YYz: short summary`, push, and tag `vX.YYz`.
 5. Tell Isaac which files to deploy to the server: usually just `game/index.html`. Deployment to Bluehost is currently manual (cPanel File Manager → `saffron-salt` folder). An automatic GitHub Actions deploy is a possible next step but is not set up.
