@@ -4,7 +4,7 @@ Digital playtest edition of **Saffron Salt**, a spice-trading auction game by Is
 
 - **Play:** https://kindfortress.com/saffron-salt/
 - **Current version:** see the top line of [RELEASES.md](RELEASES.md)
-- **Design decisions and test results:** kept in the Saffron Salt Issues and Decisions Log (Claude Doc)
+- **Design decisions and test results:** [docs/DECISIONS.md](docs/DECISIONS.md); current rules: [docs/RULES.md](docs/RULES.md)
 
 ## What's here
 

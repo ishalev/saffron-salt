@@ -1,6 +1,6 @@
 # Releases
 
-Newest first. Full reasoning and test results: Saffron Salt Issues and Decisions Log.
+Newest first. Full reasoning and test results: [docs/DECISIONS.md](docs/DECISIONS.md).
 
 | Version | Date | Changes |
 |---|---|---|
