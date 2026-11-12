@@ -10,7 +10,7 @@ const script = html.slice(html.indexOf('<script type="module">') + '<script type
 const cut = script.indexOf('// ================= UI');
 if (cut < 0) throw new Error('Could not find the UI marker in index.html');
 const engine = script.slice(0, cut) + `
-export { Game, BotAgent, BotAgentV1, BOT_TUNING, SPICES, SUIT_NAME, TRACKS, CARDS, RULES_VERSION, ENGINE_VERSION, hashSeed, leaderOf };
+export { Game, BotAgent, BotAgentV1, BOT_TUNING, SPICES, SUIT_NAME, TRACKS, CARDS, RULES_VERSION, ENGINE_VERSION, hashSeed, leaderOf, DEMO_SEED, DEMO_PLAYERS, demoHandOk };
 `;
 writeFileSync(join(here, 'engine.mjs'), engine);
 const v = (engine.match(/RULES_VERSION = '([^']+)'/) || [])[1];

@@ -309,7 +309,7 @@ table.logs td.acts .btn + .btn { margin-left: 6px; }
 // Runs in Node and the browser. No dependencies.
 
 const ENGINE_VERSION = '0.3.0';
-const RULES_VERSION = '1.21c';
+const RULES_VERSION = '1.21d';
 
 const SPICES = ['saffron', 'curry', 'oregano', 'turmeric', 'garlic', 'cinnamon', 'chili'];
 const SUIT_NAME = {
@@ -418,6 +418,20 @@ function randomSeed() {
   const w = ['cumin', 'clove', 'anise', 'mace', 'sumac', 'nutmeg', 'fennel', 'cardamom', 'paprika', 'ginger', 'pepper', 'vanilla'];
   const r = () => Math.floor(Math.random() * w.length);
   return `${w[r()]}-${w[r()]}-${Math.floor(Math.random() * 1000)}`;
+}
+// Demo game (v1.21d): a 4-player seed where every starting hand holds a pair, a Saffron or coin
+// card, and a salted double, with the high card and salted double outside the pair.
+// Found by searching demo-1, demo-2, ...; the self-test checks it still qualifies.
+const DEMO_SEED = 'demo-3904';
+const DEMO_PLAYERS = 4;
+function demoHandOk(hand) {
+  const high = c => c.suit === 'saffron' || c.suit === 'coin', saltedDouble = c => c.icons === 2 && c.salt;
+  for (let i = 0; i < hand.length; i++) for (let j = i + 1; j < hand.length; j++) {
+    if (hand[i].suit !== hand[j].suit) continue;
+    const rest = hand.filter((_, k) => k !== i && k !== j);
+    if (rest.some(high) && rest.some(saltedDouble)) return true;
+  }
+  return false;
 }
 const newStats = () => ({ bids: 0, pairBids: 0, firstPicks: 0, blockedBySalt: 0, knockdownsDealt: 0, timesKnockedDown: 0, leads: 0, moq: 0 });
 const newBd = () => ({ top: 0, lead: 0, moq: 0, coin: 0, cashout: 0, spec: 0 });
@@ -978,7 +992,7 @@ const ic = k => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k
 
 const ui = {
   view: 'home', gen: 0,
-  setup: { n: 3, seats: null, seed: randomSeed(), speed: 'normal', botRule: 'notLeadingNoSaffron', botScoring: true },
+  setup: { n: 3, demo: false, seats: null, seed: randomSeed(), speed: 'normal', botRule: 'notLeadingNoSaffron', botScoring: true },
   game: null, pending: null, sel: [], tutorial: false, coachSeen: new Set(), coach: null, paused: false,
   modal: null, viewer: null, peek: 'none', humans: [], result: null, moves: [], sim: null, simRunning: false, logFilter: 'all',
   watch: false, replayOf: null, lastSettings: null,
@@ -1318,15 +1332,16 @@ function renderHome() {
     <div class="home-main">
     <section class="panel featured" aria-labelledby="po"><h2 id="po">Play online</h2><p>Host a table or join one with a code, so friends can play together from their own devices. Empty seats can be filled with bots.</p><div class="row"><button class="btn primary big" data-act="openOnline">Host or join a table</button></div></section>
     <section class="panel" aria-labelledby="ng"><h2 id="ng">Play a local game</h2><p class="muted" style="margin:-6px 0 14px">On this device: against bots, pass-and-play, or watch the bots.</p>
-      <div class="field"><span class="lbl">Players</span><div class="seg" role="group" aria-label="Number of players">${[2, 3, 4, 5].map(n => `<button data-act="setN" data-v="${n}" aria-pressed="${s.n === n}">${n}</button>`).join('')}</div></div>
+      <div class="field"><span class="lbl">Players</span><div class="seg" role="group" aria-label="Number of players">${[2, 3, 4, 5].map(n => `<button data-act="setN" data-v="${n}" aria-pressed="${!s.demo && s.n === n}">${n}</button>`).join('')}<button data-act="setDemo" aria-pressed="${s.demo}">Demo</button></div>
+        ${s.demo ? `<p class="muted" style="margin:4px 0 0">Demo game: 4 players with a fixed deal. Every player starts with a pair, a Saffron or coin card, and a salted double, so even a few auctions show the main choices.</p>` : ''}</div>
       <div class="field"><span class="lbl">Seats</span>
         ${seats.map((p, i) => `<div class="seat"><span class="dot" style="background:${PCOLORS[i]}"></span><input type="text" value="${esc(p.name)}" data-inp="seatName" data-i="${i}" aria-label="Seat ${i + 1} name"><div class="seg" role="group" aria-label="Seat ${i + 1} player type"><button data-act="seatType" data-i="${i}" data-v="h" aria-pressed="${p.human}">Human</button><button data-act="seatType" data-i="${i}" data-v="b" aria-pressed="${!p.human}">Bot</button></div></div>`).join('')}
         ${s.n === 2 ? `<p class="muted" style="margin:4px 0 0">Two-player games add the Deck Bot as a third bidder.</p>` : ''}
       </div>
-      <div class="field"><label for="seed">Seed</label><div class="row"><input id="seed" type="text" value="${esc(s.seed)}" data-inp="seed" style="flex:1"><button class="btn small" data-act="newSeed">New seed</button></div><p class="muted" style="margin:4px 0 0">The same seed deals the same deck, so a game can be rebuilt later.</p></div>
+      ${s.demo ? `<div class="field"><label for="seed">Seed</label><input id="seed" type="text" value="${DEMO_SEED}" readonly aria-describedby="seedNote"><p id="seedNote" class="muted" style="margin:4px 0 0">The demo always uses this seed. Choose 2–5 players above for a random deal.</p></div>` : `<div class="field"><label for="seed">Seed</label><div class="row"><input id="seed" type="text" value="${esc(s.seed)}" data-inp="seed" style="flex:1"><button class="btn small" data-act="newSeed">New seed</button></div><p class="muted" style="margin:4px 0 0">The same seed deals the same deck, so a game can be rebuilt later.</p></div>`}
       <div class="field"><span class="lbl">Bot speed</span><div class="seg" role="group" aria-label="Bot speed">${['slow', 'normal', 'fast', 'instant'].map(v => `<button data-act="speed" data-v="${v}" aria-pressed="${s.speed === v}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}</div></div>
       ${s.n === 2 ? `<details class="field"><summary>Deck Bot settings</summary><div style="margin-top:8px;display:grid;gap:8px">${botRuleSelect('botRule', s.botRule)}${botScoreToggle('botScoring', s.botScoring)}</div></details>` : ''}
-      <div class="row"><button class="btn primary" data-act="start">${seats.some(p => p.human) ? 'Start game' : 'Watch bots play'}</button></div>
+      <div class="row"><button class="btn primary" data-act="start">${s.demo ? 'Start demo game' : seats.some(p => p.human) ? 'Start game' : 'Watch bots play'}</button></div>
     </section>
     </div>
     <div class="side-actions">
@@ -2051,7 +2066,7 @@ async function hostStart() {
   L.status = 'playing';
   o.writeLobby({ ...L });
   const seats = L.seats.map((s, i) => ({ name: s.name || `Player ${i + 1}`, human: s.kind === 'host', remote: s.kind === 'online' }));
-  startGame({ seed: randomSeed(), seats, botRule: L.botRule, botScoring: L.botScoring !== false, online: true });
+  startGame({ seed: ui.online.demo && L.n === DEMO_PLAYERS ? DEMO_SEED : randomSeed(), seats, botRule: L.botRule, botScoring: L.botScoring !== false, online: true });
 }
 function snapshotFor(g) {
   const o = ui.online;
@@ -2210,6 +2225,7 @@ function renderLobby() {
     <p>${host ? `Give this code to the other players. They open ${net.backend === 'relay' ? esc(location.href.split('#')[0]) : 'this page'}, choose Play online, and join with it.` : 'Table code'}</p>
     <section class="panel"><h2>Seats</h2>${host ? '<p class="muted" style="margin:-6px 0 12px">Choose who sits in each seat. Players who join fill the Human seats in order. With only two seats filled, the Deck Bot joins as a third bidder.</p>' : ''}${L.seats.map(seatRow).join('')}<p style="margin:12px 0 0">${status}</p>
     ${host && filled === 2 ? `<details class="field" style="margin-top:12px"><summary>Deck Bot settings</summary><div style="margin-top:8px;display:grid;gap:8px">${botRuleSelect('lobBot', L.botRule)}${botScoreToggle('lobBotScoring', L.botScoring !== false)}</div></details>` : ''}
+    ${host && filled === DEMO_PLAYERS ? `<div class="field" style="margin-top:12px"><span class="lbl">Deal</span><div class="seg" role="group" aria-label="Deal"><button data-act="lobDemo" data-v="0" aria-pressed="${!ui.online.demo}">Random</button><button data-act="lobDemo" data-v="1" aria-pressed="${!!ui.online.demo}">Demo</button></div>${ui.online.demo ? `<p class="muted" style="margin:4px 0 0">Demo deal (seed ${DEMO_SEED}): every player starts with a pair, a Saffron or coin card, and a salted double.</p>` : ''}</div>` : ''}
     ${host ? `<div class="row" style="margin-top:12px"><button class="btn primary" data-act="hostStart" ${open || filled < 2 ? 'disabled' : ''}>Start game</button></div><p class="muted" style="margin:10px 0 0">Keep this page open until the game ends: the game runs in your browser.</p>` : ''}</section>
   </div>`;
 }
@@ -2359,7 +2375,8 @@ document.addEventListener('change', e => {
 function act(a, el) {
   const g = ui.game, p = ui.pending;
   switch (a) {
-    case 'setN': ui.setup.n = +el.dataset.v; break;
+    case 'setN': ui.setup.n = +el.dataset.v; ui.setup.demo = false; break;
+    case 'setDemo': ui.setup.demo = true; ui.setup.n = DEMO_PLAYERS; break;
     case 'seatType': { const i = +el.dataset.i, seat = ui.setup.seats[i]; seat.human = el.dataset.v === 'h';
       if (!seat.human && seat.name === 'You') seat.name = BOT_NAMES[(i + 4) % 5];
       if (seat.human && BOT_NAMES.includes(seat.name)) seat.name = i === 0 ? 'You' : `Player ${i + 1}`; break; }
@@ -2367,7 +2384,7 @@ function act(a, el) {
     case 'speed': ui.setup.speed = el.dataset.v; break;
     case 'start': {
       const seats = ui.setup.seats.slice(0, ui.setup.n).map((s, i) => ({ name: s.name.trim() || (s.human ? `Player ${i + 1}` : BOT_NAMES[i]), human: s.human }));
-      startGame({ seed: ui.setup.seed.trim() || randomSeed(), seats, botRule: ui.setup.botRule, botScoring: ui.setup.botScoring });
+      startGame({ seed: ui.setup.demo ? DEMO_SEED : ui.setup.seed.trim() || randomSeed(), seats, botRule: ui.setup.botRule, botScoring: ui.setup.botScoring });
       ui.setup.seed = randomSeed();
       return;
     }
@@ -2415,6 +2432,7 @@ function act(a, el) {
     case 'hostCreate': hostCreate(); return;
     case 'guestJoin': guestJoin(); return;
     case 'lobKind': hostSetKind(+el.dataset.i, el.dataset.v); break;
+    case 'lobDemo': ui.online.demo = el.dataset.v === '1'; break;
     case 'hostStart': hostStart(); return;
     case 'leaveOnline': leaveOnline(); ui.view = 'online'; ui.online.status = 'ready'; break;
     case 'leaveGame': ui.modal = { type: 'leave' }; break;

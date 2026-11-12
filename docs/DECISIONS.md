@@ -1,13 +1,13 @@
 # Saffron Salt — Issues and Decisions Log
 
-**Current release: v1.21c** (Oct 9, 2026). This file is the single source of truth from Oct 14, 2026; it was moved here from the Claude Doc "Saffron Salt — Issues and Decisions Log", which is now an archived copy.
+**Current release: v1.21d** (Nov 11, 2026). This file is the single source of truth from Oct 14, 2026; it was moved here from the Claude Doc "Saffron Salt — Issues and Decisions Log", which is now an archived copy.
 
 ## How to use this log
 
 Every issue and decision is tied to the version it was found in or tested on.
 
 - **Status values:** Planned (accepted, scheduled for a version), To test (needs a simulation before a decision), Deferred, Rejected, Closed (shipped or resolved).
-- **IDs:** G = gameplay, U = UI, T = test before inclusion, D = deferred, N = found in testing, R = rejected. IDs stay fixed once assigned; continue numbering from the highest used (G7, U18, T1, D5, N3, R5).
+- **IDs:** G = gameplay, U = UI, T = test before inclusion, D = deferred, N = found in testing, R = rejected. IDs stay fixed once assigned; continue numbering from the highest used (G7, U19, T1, D5, N3, R5).
 - **Sources:** Isaac's in-chat feedback, Isaac–Mitch playtest calls (Oct 6, 2026, [recording](https://fathom.video/calls/848473309)), and simulations.
 - **Updating:** when a decision is made or an issue closes, add a dated row to the Decisions log, move the issue, and record any test results with method and sample size.
 
@@ -45,6 +45,7 @@ Newest first. "Version" is the version the decision was tested on or applies fro
 
 | Date | Version | Decision | Reasoning and evidence |
 | --- | --- | --- | --- |
+| Nov 11, 2026 | v1.21d | Released v1.21d (U19): a Demo game with fixed seed `demo-3904` for publisher pitches, offered locally ("Demo" beside the player counts) and online ("Deal: Demo" when 4 seats are filled). Only index.html changes. | Requested by Isaac: in a 4-player pitch, every seat should see a pair, a high card (Saffron or coin) and a salted double, even if only a few turns are played. The deal depends only on the seed, so it holds whoever sits where and whether seats are human or bot. Searched demo-1 to demo-41023: 8 seeds qualify (about 1 in 5,000). Chose demo-3904 because each player's pair is in a different suit (Chili, Turmeric, Cinnamon, Oregano), high cards mix Saffron and coins, and the four salted doubles differ. Strict test: the high card and salted double are outside the pair. Self-test now fails if a rules change breaks the demo deal. Browser-tested locally (demo game played to the end; switching back to 3 players restores a random seed) and online (host and guest both on seed demo-3904); existing local and online tests pass. |
 | Oct 14, 2026 | v1.21c | Build and release work moves to Claude Code; this log, the rules (`docs/RULES.md`) and the working brief (`CLAUDE.md`) move into the repository. The Claude Doc log is archived. | Isaac doesn't want to update GitHub by hand each release. Claude Code commits, tags and pushes with Isaac's own GitHub sign-in; keeping the log in the repository lets it be updated with each release. |
 | Oct 14, 2026 | v1.21c | Project archive is the public GitHub repository `ishalev/saffron-salt` (game files, tools, RELEASES.md). A release isn't done until it's committed and tagged; each session starts by checking the repository's version against this log. | A workspace reset lost the working test and analysis scripts (the game itself was recoverable from the released file). Public so Claude can read it directly. The real feedback.php is never committed; the repository holds a template. |
 | Oct 9, 2026 | v1.21c | Released v1.21c (U15, G7, U16, U17, U18). Only index.html changes. | Authorized by Isaac. Tested in a browser against a local copy of the PHP setup: single device, pass-and-play with a changed market card, and online where host and guest both changed their market card and their bid (identical results). Replays exact; all 83 cards accounted for at every player count. |
@@ -79,6 +80,12 @@ Newest first. "Version" is the version the decision was tested on or applies fro
 | R5 | Deck Bot advances as if salted at season end. | Oct 6, 2026 | Too weak: about 55% of advances blocked; bot beats both 0% of the time. |
 
 ## Closed issues
+
+### Closed in v1.21d
+
+| ID | Issue | Resolution |
+| --- | --- | --- |
+| U19 | Pitch demos need every player to see the main choices quickly | Demo game: 4 players, seed `demo-3904`. Starting hands: P1 Saffron 77, Curry 73 x2 (salt), Chili pair (19, 15, 14), Cinnamon 33, Oregano 59; P2 Coin 82 (+5), Turmeric 56 x2 (salt), Turmeric pair (52, 51, 50), Garlic 36, Cinnamon 32; P3 Coin 79 (+2), Oregano 65 x2 (salt), Cinnamon pair (29, 26, 24), Curry 71, Chili 16; P4 Coin 80 (+2), Saffron 74, Cinnamon 34 x2 (salt), Oregano pair (62, 57), Turmeric 55, Garlic 44 |
 
 ### Closed in v1.21c
 
@@ -139,6 +146,21 @@ Newest first. "Version" is the version the decision was tested on or applies fro
 ## Test results
 
 All runs use bots in every seat; human play may differ. Reproduce with the scripts in `tools/` (see `tools/README.md`).
+
+### Physical coin supply (Nov 11, 2026; v1.21c rules; no decision yet)
+
+Question: how many printed coins, in which denominations, for the physical game. 1,600 bot games (400 per player count; 2-player games include a scoring Deck Bot). Each payout is paid as it happens in the fewest coins; the table is the most coins out at once (95th percentile, 5 players), by when players trade small coins up.
+
+| Set | Trade up | 2s | 5s | 10s | Larger |
+| --- | --- | --- | --- | --- | --- |
+| 2/5/10 | Never | 83 | 38 | 9 | – |
+| 2/5/10 | After seasons 1 and 2 | 60 | 23 | 21 | – |
+| 2/5/10 | After every season | 55 | 16 | 34 | – |
+| 2/5/20 | After every season | 55 | 28 | – | 14 twenties |
+| 2/5/10/20 | After every season | 55 | 16 | 10 | 14 twenties |
+| 2/5/10/25 | After every season | 55 | 16 | 11 | 11 twenty-fives |
+
+Other findings: total points on the table at game end p95 / max: 2p+bot 256 / 277, 3p 264 / 287, 4p 327 / 364, 5p 403 / 430. About 9–10 fives are paid per season (p95 12). A fourth denomination only replaces 10s, saving about 10 coins. Recommended to Isaac: 2s, 5s and 10s, about 50 / 30 / 30 (110 coins, 550 points), with a rule to trade up between seasons.
 
 ### Specialization by player count (Oct 7, 2026; review of existing runs)
 
