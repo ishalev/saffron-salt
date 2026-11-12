@@ -4,6 +4,7 @@ Newest first. Full reasoning and test results: [docs/DECISIONS.md](docs/DECISION
 
 | Version | Date | Changes |
 |---|---|---|
+| v1.21e | Nov 11, 2026 | Demo game moved to a small "Demo to publisher" button at the bottom of the home page's right column. It opens an online table for 4 with the demo deal (seed demo-3904); seats can be Human or Bot but not removed. Asks for your name the first time, then remembers it and creates the table in one click. The v1.21d local Demo option and lobby Deal choice are removed. |
 | v1.21d | Nov 11, 2026 | Demo game for pitches: "Demo" next to the player counts in Play a local game, and a Demo deal option in the online lobby with 4 seats filled. Both use seed demo-3904, where every player starts with a pair, a Saffron or coin card, and a salted double. Self-test checks the demo deal. No rules change; existing replays are unaffected. |
 | v1.21c | Oct 9, 2026 | Play online featured on the home page; "Play a local game" panel; market card can be changed like a bid; larger animations with moment text in the Latest box, status box and banner; scoring labels in player colors; empty market shows no text. Fixes: online stall when a guest changed a choice early; auction numbers in buying log lines. |
 | v1.21b | Oct 7, 2026 | Saffron cube on space 4 standard in 2–3 player games; simulator reports specialization records. |

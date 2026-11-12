@@ -1,6 +1,6 @@
 # Saffron Salt — Issues and Decisions Log
 
-**Current release: v1.21d** (Nov 11, 2026). This file is the single source of truth from Oct 14, 2026; it was moved here from the Claude Doc "Saffron Salt — Issues and Decisions Log", which is now an archived copy.
+**Current release: v1.21e** (Nov 11, 2026). This file is the single source of truth from Oct 14, 2026; it was moved here from the Claude Doc "Saffron Salt — Issues and Decisions Log", which is now an archived copy.
 
 ## How to use this log
 
@@ -45,6 +45,7 @@ Newest first. "Version" is the version the decision was tested on or applies fro
 
 | Date | Version | Decision | Reasoning and evidence |
 | --- | --- | --- | --- |
+| Nov 11, 2026 | v1.21e | Released v1.21e: the demo is a single "Demo to publisher" button (bottom of the right column) that creates an online table for 4 with the demo deal. v1.21d's local Demo option and lobby Deal choice are removed. Only index.html changes. | Isaac: pitches always use online play, even in the same room, so the local option and the lobby toggle are unnecessary; he wants one discreet button that sets everything up. Demo tables can't drop below 4 seats (no Nobody option) so the deal guarantee holds; empty seats can be Bots. Host name is remembered on the device. Browser-tested: first use asks for a name, second use opens the table in one click, guest joined and both screens show seed demo-3904; existing local and online tests pass. v1.21d was pushed to GitHub but not deployed. |
 | Nov 11, 2026 | v1.21d | Released v1.21d (U19): a Demo game with fixed seed `demo-3904` for publisher pitches, offered locally ("Demo" beside the player counts) and online ("Deal: Demo" when 4 seats are filled). Only index.html changes. | Requested by Isaac: in a 4-player pitch, every seat should see a pair, a high card (Saffron or coin) and a salted double, even if only a few turns are played. The deal depends only on the seed, so it holds whoever sits where and whether seats are human or bot. Searched demo-1 to demo-41023: 8 seeds qualify (about 1 in 5,000). Chose demo-3904 because each player's pair is in a different suit (Chili, Turmeric, Cinnamon, Oregano), high cards mix Saffron and coins, and the four salted doubles differ. Strict test: the high card and salted double are outside the pair. Self-test now fails if a rules change breaks the demo deal. Browser-tested locally (demo game played to the end; switching back to 3 players restores a random seed) and online (host and guest both on seed demo-3904); existing local and online tests pass. |
 | Oct 14, 2026 | v1.21c | Build and release work moves to Claude Code; this log, the rules (`docs/RULES.md`) and the working brief (`CLAUDE.md`) move into the repository. The Claude Doc log is archived. | Isaac doesn't want to update GitHub by hand each release. Claude Code commits, tags and pushes with Isaac's own GitHub sign-in; keeping the log in the repository lets it be updated with each release. |
 | Oct 14, 2026 | v1.21c | Project archive is the public GitHub repository `ishalev/saffron-salt` (game files, tools, RELEASES.md). A release isn't done until it's committed and tagged; each session starts by checking the repository's version against this log. | A workspace reset lost the working test and analysis scripts (the game itself was recoverable from the released file). Public so Claude can read it directly. The real feedback.php is never committed; the repository holds a template. |
@@ -81,11 +82,11 @@ Newest first. "Version" is the version the decision was tested on or applies fro
 
 ## Closed issues
 
-### Closed in v1.21d
+### Closed in v1.21d–e
 
 | ID | Issue | Resolution |
 | --- | --- | --- |
-| U19 | Pitch demos need every player to see the main choices quickly | Demo game: 4 players, seed `demo-3904`. Starting hands: P1 Saffron 77, Curry 73 x2 (salt), Chili pair (19, 15, 14), Cinnamon 33, Oregano 59; P2 Coin 82 (+5), Turmeric 56 x2 (salt), Turmeric pair (52, 51, 50), Garlic 36, Cinnamon 32; P3 Coin 79 (+2), Oregano 65 x2 (salt), Cinnamon pair (29, 26, 24), Curry 71, Chili 16; P4 Coin 80 (+2), Saffron 74, Cinnamon 34 x2 (salt), Oregano pair (62, 57), Turmeric 55, Garlic 44 |
+| U19 | Pitch demos need every player to see the main choices quickly | v1.21e: "Demo to publisher" button creates an online 4-player table. Seed `demo-3904`. Starting hands: P1 Saffron 77, Curry 73 x2 (salt), Chili pair (19, 15, 14), Cinnamon 33, Oregano 59; P2 Coin 82 (+5), Turmeric 56 x2 (salt), Turmeric pair (52, 51, 50), Garlic 36, Cinnamon 32; P3 Coin 79 (+2), Oregano 65 x2 (salt), Cinnamon pair (29, 26, 24), Curry 71, Chili 16; P4 Coin 80 (+2), Saffron 74, Cinnamon 34 x2 (salt), Oregano pair (62, 57), Turmeric 55, Garlic 44 |
 
 ### Closed in v1.21c
 
