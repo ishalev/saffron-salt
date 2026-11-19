@@ -1,13 +1,13 @@
 # Saffron Salt — Issues and Decisions Log
 
-**Current release: v1.22a** (Nov 19, 2026). This file is the single source of truth from Oct 14, 2026; it was moved here from the Claude Doc "Saffron Salt — Issues and Decisions Log", which is now an archived copy.
+**Current release: v1.22b** (Nov 19, 2026). This file is the single source of truth from Oct 14, 2026; it was moved here from the Claude Doc "Saffron Salt — Issues and Decisions Log", which is now an archived copy.
 
 ## How to use this log
 
 Every issue and decision is tied to the version it was found in or tested on.
 
 - **Status values:** Planned (accepted, scheduled for a version), To test (needs a simulation before a decision), Deferred, Rejected, Closed (shipped or resolved).
-- **IDs:** G = gameplay, U = UI, T = test before inclusion, D = deferred, N = found in testing, R = rejected. IDs stay fixed once assigned; continue numbering from the highest used (G8, U20, T2, D5, N4, R5).
+- **IDs:** G = gameplay, U = UI, T = test before inclusion, D = deferred, N = found in testing, R = rejected. IDs stay fixed once assigned; continue numbering from the highest used (G8, U25, T2, D6, N4, R5).
 - **Sources:** Isaac's in-chat feedback, Isaac–Mitch playtest calls (Oct 6, 2026, [recording](https://fathom.video/calls/848473309)), and simulations.
 - **Updating:** when a decision is made or an issue closes, add a dated row to the Decisions log, move the issue, and record any test results with method and sample size.
 
@@ -32,6 +32,7 @@ None.
 | D3 | Simulator report clarity: explain each figure; drop columns with no information (player leads read 100% at 3+ players). | Mitch, call |
 | D4 | Universal rule: the base card of any lot cannot be stored (G4 applies it to Saffron and coins only). | Isaac, call |
 | D5 | Option to store the top card of the deck instead of a card from the lot. Mitch was against it: it weakens the link between choosing a lot and what you store. | Isaac, call |
+| D6 | Alternatives to the no-store base rule, if it stays clunky after more playtesting: (a) no lot's base card can be stored; (b) no Saffron, coin or Curry card can be stored anywhere (needs a rule for lots with nothing storable). Isaac and Mitch keep the current rule for now; Mitch is adding a clear visual indicator to the rules text. | Isaac–Mitch debrief, Nov 19, 2026 ([recording](https://fathom.video/calls/908734495)) |
 
 ### Infrastructure (not game changes)
 
@@ -45,6 +46,13 @@ Newest first. "Version" is the version the decision was tested on or applies fro
 
 | Date | Version | Decision | Reasoning and evidence |
 | --- | --- | --- | --- |
+| Nov 19, 2026 | v1.22b | Released v1.22b: U21–U25 (slower scoring with everyone-clicks-OK, final scoring reveal, taller log, prominent season results, reference card, pitch walkthrough). UI only; rules, setup and engine decisions are unchanged (the engine only records extra display data for the final panel). | Approved by Isaac after the Isaac–Mitch debrief. Engine self-test passes (44 games). Browser tests: new `test_pitch.py` (walkthrough forward and back, Start game, reference card, season and final panels, host waits for the guest's OK, identical results); `test_options.py`, `test_local.py`, `test_online.py` pass. The test driver now uses short click timeouts and retries, which also fixed the old `test_online.py` timing flake (4 of 4 runs pass). |
+| Nov 19, 2026 | v1.22b | Approved U25: pitch walkthrough with Next and Back through every step, and a Start game button on each step that opens the publisher demo table. Planned for the next build. | Debrief with Mitch: a controlled screen-share walkthrough avoids showing hands; Isaac wants to move both ways and jump into a game anytime. |
+| Nov 19, 2026 | v1.22b | Approved U24: on-screen reference card beside the hand, modeled on the printed card (ranges and quantities, no zero), with the bidding, order and scoring summary where it fits. Planned for the next build. | Isaac: the analog card's disguise role isn't needed digitally, but its content is. Printed card's Curry range (66–76) is a typo; the deck is 66–73. |
+| Nov 19, 2026 | v1.22b | Approved U23: season results as a large centered panel for everyone, with tooltips on each point type and on the lead bonus. Planned for the next build. | Debrief with Mitch: the summary wasn't prominent and point values weren't explained. |
+| Nov 19, 2026 | v1.22b | Approved U22: the Latest box shows the last 16 lines without scrolling. Planned for the next build. | Debrief with Mitch: the log scrolled during the pitch. |
+| Nov 19, 2026 | v1.22b | Approved U21: one OK per season after track-by-track scoring; final scoring shows each player's cash-out bid, ranking and points, then specialization, and waits for OK. Planned for the next build. | Isaac: the cash-out currently jumps straight to the point summary, so nobody sees what everyone bid. |
+| Nov 19, 2026 | v1.22a | Debrief with Mitch: keep specialization and the final auction in pitches but present them as removable modules (already options in v1.22a, G8 and T2); keep the no-store Saffron/coin base rule for now (alternatives filed as D6); demo UI items filed as U21–U25, awaiting Isaac's go. | Frank and Vinny found both mechanics swingy; the core game held up. Fathom summary, checked against Home Base's notes. |
 | Nov 19, 2026 | v1.22a | Released v1.22a: U20 (fixed lot numbers), G8 (specialization bonus option) and T2 (final auction endgame option). Options default to the standard game; they are saved with replays, game records and online tables. | Approved by Isaac after the R&R pitch so Frank can test both options. Engine self-test covers 24 games with the options (replays exact, 83 cards, no cash-out or specialization points when off, final auction between S3 A3 and season 3 scoring, nothing stored in it). Browser-tested locally and online (new `test_options.py`: greyed bought lots, final auction phase, options shown to the guest and on results, identical host and guest results); existing local and online tests pass. `test_online.py` sometimes times out clicking a re-rendering button (1 of 8 runs on v1.21e, 2 of 9 on v1.22a); a test-timing flake, not a game fault. Endgame comparison under Test results. |
 | Nov 19, 2026 | v1.22a | Next build is v1.22a, not v1.21f. Versioning: the number changes when rules or gameplay are added, even as optional settings; the letter is for fixes and UI changes. | Isaac: G8 and T2 add gameplay, and which settings become the default is still to be tested. |
 | Nov 19, 2026 | v1.22a | Approved T2: "Endgame" setting, Cash-out (default) or Final auction (stored cards return to hand, one more auction for plain lots from season 3's last bids, unbid cards discarded, season 3 scoring after it, no cash-out points). Planned for the next build, then simulate against the cash-out. | R&R pitch feedback (Frank, Vinny): the cash-out felt passive and swung results; Vinny's one-more-bid idea, with Isaac's choice of plain lots. |
@@ -87,6 +95,16 @@ Newest first. "Version" is the version the decision was tested on or applies fro
 | R5 | Deck Bot advances as if salted at season end. | Oct 6, 2026 | Too weak: about 55% of advances blocked; bot beats both 0% of the time. |
 
 ## Closed issues
+
+### Closed in v1.22b
+
+| ID | Issue | Resolution |
+| --- | --- | --- |
+| U21 | Scoring and cash-out too fast to follow | Track-by-track scoring slowed to 1.5 s per track; season results wait until every human clicks OK (online guests each on their own screen; the host sees who is still choosing; "Bot plays for" also clears a disconnected guest). Final scoring panel: cash-out rank, each player's three stored cards with the bid outlined, the Deck Bot's flipped cards, points; then specialization per player (or a note when an option is off); waits for OK. Bots-only games continue on their own |
+| U22 | Latest log scrolled | Shows the last 16 lines, no scroll box |
+| U23 | Season results not prominent | Large centered panel for everyone, tooltips on each column heading and on each track's lead bonus |
+| U24 | Reference card content | Card-style reference beside your own hand (not selectable, marked Reference): spice icons, quantities and ranges as on the printed card without the zero, plus coins; click to enlarge for the bidding, order, end-of-season and scoring summary |
+| U25 | Pitch walkthrough | "Pitch walkthrough" button: 10 steps on the real board with a hand-built 4-player deal played through the engine (market with coin, double, salt and Saffron lots; secret bids; a purchase with a skip, a salt block and a knockdown at the top; storing; others buying; restock; end-of-season movement; scoring; endgame and options). Next, Back, Start game (opens the publisher demo table), Exit. No hands shown, nothing recorded |
 
 ### Closed in v1.22a
 

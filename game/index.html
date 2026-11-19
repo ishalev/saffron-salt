@@ -150,7 +150,7 @@ details summary { cursor: pointer; font-weight: 400; }
 .bids { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .bids li { display: flex; align-items: center; gap: 8px; font-size: 15px; }
 .bids .rk { font-family: var(--num); font-weight: 500; width: 18px; }
-.ticker { font-size: 14px; color: var(--muted); max-height: 140px; overflow: auto; }
+.ticker { font-size: 14px; color: var(--muted); }
 .ticker div { padding: 2px 0; border-bottom: 1px dotted var(--line); }
 
 /* ---------- Cards ---------- */
@@ -228,6 +228,28 @@ table.st th { font-weight: 400; color: var(--muted); }
 .check { display: flex; gap: 8px; align-items: baseline; font-weight: 300; }
 .check input { width: auto; }
 .seasonbox { border: 2px solid var(--gold); }
+.walkbox { border-left: 8px solid var(--gold); }
+.walkbox h3 { font-size: 22px; }
+.walkbox .walknav { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.walkbox .walkstep { font-family: var(--num); color: var(--muted); font-size: 14px; }
+.walkbox table.st { font-size: 14px; margin-top: 6px; }
+.dialog.bigpanel { max-width: 780px; font-size: 17px; border: 3px solid var(--gold); }
+.dialog.bigpanel h2 { font-size: 30px; }
+.dialog.bigpanel table.st { font-size: 16px; }
+.dialog.bigpanel th[title] { text-decoration: underline dotted; cursor: help; }
+.finalrev td .cards { gap: 3px; flex-wrap: nowrap; }
+.finalrev .bidmark { outline: 3px solid var(--gold); outline-offset: 1px; border-radius: 6px; }
+.refcard { width: 150px; min-height: calc(64px * 1.36); border: 1.5px dashed var(--ink); border-radius: 6px; background: var(--panel); padding: 12px 6px 4px; cursor: zoom-in; flex: none; font-size: 10.5px; line-height: 1.15; color: var(--ink); position: relative; }
+.refcard .rtag { position: absolute; right: 4px; top: 2px; font-family: var(--sc); font-size: 8px; letter-spacing: .06em; color: var(--muted); }
+.refcard table, .refbig table { border-collapse: collapse; width: 100%; }
+.refcard th, .refbig th { font-weight: 400; color: var(--muted); text-align: left; border-bottom: 1px solid var(--line); }
+.refcard td, .refbig td { padding: 0; white-space: nowrap; }
+.refcard td:nth-child(n+3), .refcard th:nth-child(n+3), .refbig td:nth-child(n+3), .refbig th:nth-child(n+3) { text-align: right; font-family: var(--num); }
+.refbig { max-width: 520px; }
+.refbig table { font-size: 17px; margin-bottom: 12px; }
+.refbig td, .refbig th { padding: 3px 6px; }
+.refbig h3 { margin: 12px 0 4px; font-size: 18px; }
+.refbig ul { margin: 0; padding-left: 20px; }
 .card.bidcard { transform: translateY(-8px); box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--gold); }
 .bidtag { position: absolute; left: 50%; top: -1px; transform: translateX(-50%); background: var(--gold); color: #fff; font-size: 10px; padding: 0 5px; border-radius: 0 0 4px 4px; white-space: nowrap; font-weight: 500; }
 .card.land { width: calc(var(--w) * 1.36); height: var(--w); }
@@ -314,7 +336,7 @@ table.logs td.acts .btn + .btn { margin-left: 6px; }
 // Runs in Node and the browser. No dependencies.
 
 const ENGINE_VERSION = '0.3.0';
-const RULES_VERSION = '1.22a';
+const RULES_VERSION = '1.22b';
 
 const SPICES = ['saffron', 'curry', 'oregano', 'turmeric', 'garlic', 'cinnamon', 'chili'];
 const SUIT_NAME = {
@@ -801,6 +823,8 @@ class Game {
     this.phase = 'final';
     this.season = 4;
     let bids = null;
+    // U21: what final scoring reveals, for the final-scoring panel. Card numbers only; no effect on play.
+    this.finalReveal = { endgame: this.variants.endgame, spec: this.variants.spec, cashout: null, specRows: [] };
     if (this.variants.endgame !== 'auction') {
       this.say('Final cash-out: stored cards revealed.');
       bids = this.players.map(p => ({ owner: p.id, bid: bestBid(p.stored) }));
@@ -809,6 +833,8 @@ class Game {
       bids.sort((x, y) => bidKey(y.bid) - bidKey(x.bid));
       const table = CASHOUT[this.n];
       bids.forEach((b, r) => { this.credit(b.owner, table[r] ?? 0, 'cashout'); this.say(`  ${r + 1}. ${this.nameOf(b.owner)}: ${b.bid ? bidStr(b.bid) : 'no bid'} → +${table[r] ?? 0}`); });
+      this.finalReveal.cashout = bids.map((b, r) => ({ owner: b.owner, cards: (b.owner === 'bot' ? botFlips : this.who(b.owner).stored).map(c => c.n),
+        bid: b.bid ? b.bid.cards.map(c => c.n) : [], pts: b.owner === 'bot' && !this.botRules.scoring ? 0 : table[r] ?? 0 }));
       for (const p of this.players) { this.discard.push(...p.stored); p.stored = []; }
       if (botFlips) this.discard.push(...botFlips);
     }
@@ -817,6 +843,7 @@ class Game {
       const u = SPICES.filter(s => this.pos(p.id, s) === 1).length;
       const b = SPEC_BONUS[Math.min(3, u)];
       this.credit(p.id, b, 'spec');
+      this.finalReveal.specRows.push({ owner: p.id, untouched: u, pts: b });
       this.say(`  ${p.name}: ${u} untouched track${u === 1 ? '' : 's'} → +${b}`);
     }
     this.say(`Final scores: ${this.scoreLine()}`);
@@ -1012,6 +1039,14 @@ const BOT_RULES = [
   ['saltedNoSaffron', 'Advance as if salted, every track except Saffron'],
   ['draw3', 'Draw 3 cards and apply them'],
 ];
+const CAT_TIP = {
+  top: 'Track tops: 2 points (Saffron 5) each time you reach the top of a track, and again for each move you make while already there.',
+  lead: 'Leads: at season end, the single marker furthest ahead on a track scores 5 (Saffron 7).',
+  moq: 'MOQ (Minimum Order Quantity): at season end, every other player at or above the banded MOQ space scores 2.',
+  coin: 'Coin cards: points cashed from coin cards in the lots you bought.',
+  cashout: 'Cash-out: after season 3, stored cards make one last bid for 1st / 2nd / 3rd place points.',
+  spec: 'Specialization: 7 / 17 / 30 points for one / two / three or more tracks you never moved on.',
+};
 const CAT = [['top', 'Track tops', '#c8232c'], ['lead', 'Leads', '#c99a3b'], ['moq', 'MOQ', '#1e6b3c'], ['coin', 'Coin cards', '#9aa0a6'], ['cashout', 'Cash-out', '#6e3b1e'], ['spec', 'Specialization', '#1f72b8']];
 const MOQ_TIP = '+2 for reaching the Minimum Order Quantity space';
 const ICON = {
@@ -1282,7 +1317,7 @@ function seasonSummaryOf(g) {
 // ---------- game lifecycle ----------
 async function startGame({ seed, seats, botRule, botScoring = true, variants = {}, tutorial = false, replay = null, online = false }) {
   const gen = ++ui.gen;
-  Object.assign(ui, { tutorial, coachSeen: new Set(), coach: null, modal: null, paused: false, result: null, pending: null, anim: null, toast: null, scoreFx: null, seasonSummary: null, bidRound: null, myBid: null, viewOnly: null, lastMoves: [] });
+  Object.assign(ui, { tutorial, coachSeen: new Set(), coach: null, modal: null, paused: false, result: null, pending: null, anim: null, toast: null, scoreFx: null, seasonSummary: null, finalReveal: null, bidRound: null, myBid: null, viewOnly: null, lastMoves: [] });
   ui.lastSettings = { seats: seats.map(s => ({ ...s })), botRule, botScoring, variants: { ...variants } };
   const players = seats.map(s => ({ name: s.name, agent: s.human ? HumanAgent : s.remote ? RemoteAgent : BotAgent }));
   const g = new Game({ seed, players, replay: replay?.decisions || null, botRules: { seasonAdvance: botRule, scoring: botScoring }, variants });
@@ -1302,9 +1337,10 @@ async function startGame({ seed, seats, botRule, botScoring = true, variants = {
     if (kind === 'finalStart') showToast('Final auction: stored cards return to hands');
     if (kind === 'seasonStart') { showToast(`Season ${g.season} begins`); ui.seasonSummary = null; }
     if ((kind === 'botStorage' || kind === 'storage') && ui.storageToast !== g.season) { ui.storageToast = g.season; showToast(`End of season ${g.season}: storage`); }
-    if (kind === 'scoreTrack') { ui.scoreFx = data; render(); if (online) publishState(); await sleep(650 * speedMul()); ui.scoreFx = null; return; }
+    if (kind === 'scoreTrack') { ui.scoreFx = data; render(); if (online) publishState(); await sleep(1500 * speedMul()); ui.scoreFx = null; return; } // U21: slower
     if (ui.moves.length) { ui.mvKey = (ui.mvKey || 0) + 1; if (online) publishState(); await animateMoves(gen); ui.lastMoves = ui.moves.slice(); ui.movedAt = Date.now(); }
     if (kind === 'scoring') ui.seasonSummary = seasonSummaryOf(g);
+    if (kind === 'final') ui.finalReveal = g.finalReveal || null;
     render();
     if (online) publishState();
     if (ui.tutorial) {
@@ -1316,9 +1352,8 @@ async function startGame({ seed, seats, botRule, botScoring = true, variants = {
       } else if (kind === 'seasonStart') { if (g.season > 1) await coachFor('seasonStart'); }
       else await coachFor(kind);
     }
-    if (kind === 'scoring' && ui.humans.length && !ui.watch) {
-      await new Promise(res => { ui.modal = { type: 'season', res }; render(); });
-    } else { const ms = speedMs(kind); if (ms) await sleep(kind === 'scoring' ? ms * 4 : ms); }
+    if (kind === 'scoring' || kind === 'final') await waitForAll(g, kind === 'scoring' ? 'season' : 'final', online);
+    else { const ms = speedMs(kind); if (ms) await sleep(ms); }
     while (ui.paused && gen === ui.gen) await sleep(150);
     if (gen !== ui.gen) throw new Error('aborted');
   };
@@ -1335,6 +1370,152 @@ async function startGame({ seed, seats, botRule, botScoring = true, variants = {
   } catch (e) {
     if (e.message !== 'aborted') { console.error(e); ui.modal = { type: 'text', title: 'Something went wrong', text: String(e.stack || e) }; render(); }
   }
+}
+// U21/U23: the season results (or final scoring) stay up until every human player clicks OK:
+// local players with one click on this device, online guests each on their own screen. Bots-only games continue on their own.
+async function waitForAll(g, kind, online) {
+  const waits = [];
+  if (ui.humans.length && !ui.watch) waits.push(new Promise(res => { ui.modal = { type: kind, res }; render(); }));
+  if (online) {
+    const o = ui.online;
+    g.players.forEach((p, i) => {
+      if (p.agent !== RemoteAgent || o.botSeats.has(i)) return;
+      waits.push(new Promise(res => { const id = ++o.reqSeq; o.pending.set(i, { id, req: { type: 'ack', cards: null, kind }, resolve: v => { render(); res(v); publishState(); } }); }));
+    });
+    publishState();
+  }
+  if (!waits.length) {
+    const ms = speedMs(kind === 'season' ? 'scoring' : 'final') * (kind === 'season' ? 4 : 8);
+    if (ms) { ui.modal = { type: kind, auto: true }; render(); if (online) publishState(); await sleep(ms); if (ui.modal?.auto) ui.modal = null; }
+    return;
+  }
+  render();
+  await Promise.all(waits);
+  if (online) publishState();
+}
+function finalRevealHTML(g, fr) {
+  if (!fr) return '';
+  const nameOf = o => esc(g.nameOf(o));
+  const card = n => cardHTML(CARDS[n], { sm: true });
+  let out = '';
+  if (fr.cashout) {
+    out += `<h3 style="margin:6px 0">Cash-out</h3><p class="muted" style="margin:0 0 8px">Each player’s three stored cards make one last bid; the best bid in each set is outlined.${fr.cashout.some(r => r.owner === 'bot') ? ' The Deck Bot flips cards from the deck, as in an auction.' : ''}</p>
+      <div class="scroll"><table class="st"><thead><tr><th>Rank</th><th></th><th>Cards</th><th>Bid</th><th>Points</th></tr></thead><tbody>${fr.cashout.map((r, k) => `<tr><td>${k + 1}</td><td>${dotHTML(r.owner)} ${nameOf(r.owner)}</td><td><div class="cards">${r.cards.map(n => `<span class="${r.bid.includes(n) ? 'bidmark' : ''}">${card(n)}</span>`).join('')}</div></td><td>${r.bid.length ? esc(bidStr(makeBid(r.bid.map(n => CARDS[n])))) : 'no bid'}</td><td><strong>+${r.pts}</strong></td></tr>`).join('')}</tbody></table></div>`;
+  } else out += `<p class="muted">Final auction endgame: no cash-out points.</p>`;
+  if (fr.spec) out += `<h3 style="margin:14px 0 6px">Specialization</h3><div class="scroll"><table class="st"><thead><tr><th></th><th title="${esc(CAT_TIP.spec)}">Untouched tracks</th><th>Bonus</th></tr></thead><tbody>${fr.specRows.map(r => `<tr><td>${dotHTML(r.owner)} ${nameOf(r.owner)}</td><td>${r.untouched}</td><td><strong>+${r.pts}</strong></td></tr>`).join('')}</tbody></table></div>`;
+  else out += `<p class="muted">Specialization bonus is off for this game.</p>`;
+  return out;
+}
+// ================= Pitch walkthrough (U25) =================
+// A guided tour of the real board for screen-share pitches: a hand-built example deal for 4 players, played
+// through the rules engine one step at a time. No live game, no hands shown, nothing recorded.
+// Next and Back move through the steps; Start game opens the publisher demo table from any step.
+let WALK_CACHE = null;
+function WALK_STEPS() { return WALK_CACHE ||= buildWalk(); }
+function buildWalk() {
+  const names = ['Ana', 'Ben', 'Cleo', 'Dev'];
+  const g = new Game({ seed: 'pitch-walkthrough', players: names.map(name => ({ name, agent: BotAgent })) });
+  g.recordSnapshots = true;
+  const C = n => CARDS[n];
+  const pos = { // spaces from the bottom (1 = start), for Ana, Ben, Cleo, Dev; 4-player neutral cubes as in a real game
+    chili: [2, 4, 1, 6], cinnamon: [1, 5, 3, 2], garlic: [4, 6, 1, 3], turmeric: [1, 2, 6, 4], oregano: [8, 1, 9, 4], curry: [1, 3, 2, 1], saffron: [1, 1, 2, 1] };
+  for (const sp of SPICES) {
+    g.tracks[sp] = g.players.map((p, i) => ({ owner: p.id, pos: pos[sp][i] }));
+    if (TRACKS[sp].n4) g.tracks[sp].push({ owner: 'n', pos: TRACKS[sp].n4 });
+  }
+  [14, 17, 19, 12].forEach((m, i) => { g.players[i].money = m; });
+  g.season = 2; g.auction = 1; g.phase = 'auction';
+  const lot = (num, ns) => ({ id: 'W' + num, num, pending: false, cards: ns.map(n => ({ c: C(n), fd: false })) });
+  g.market = [lot(1, [81, 70]), lot(2, [46, 17, 61]), lot(3, [76, 52]), lot(4, [25, 9, 40])];
+  const steps = [];
+  const snap = (title, html, extra = {}) => {
+    steps.push({ title, html, moves: g.moves.filter(m => m.before && m.after), state: JSON.parse(JSON.stringify({
+      seed: g.seed, n: 4, season: g.season, auction: g.auction, phase: g.phase, hasBot: false, botMoney: null, botStats: null, botRule: null, botScoring: true,
+      variants: { ...g.variants }, finalRound: false, taken: g.taken,
+      players: g.players.map(p => ({ id: p.id, idx: p.idx, name: p.name, money: p.money, hand: p.hand.map(c => c.n), stored: p.stored.map(c => c.n) })),
+      tracks: g.tracks, market: g.market.map(l => ({ id: l.id, num: l.num, pending: !!l.pending, cards: l.cards.map(x => ({ n: x.c.n, fd: x.fd })) })),
+      lastBids: g.lastBids ? g.lastBids.map(b => ({ owner: b.owner, cards: b.bid.cards.map(c => c.n) })) : null,
+      revealing: extra.revealing || null, log: extra.log || [], waiting: [], online: [] })) });
+    g.moves = [];
+  };
+  snap('The board', `<p>Four spice traders compete over three seasons. Each column is a spice track. Markers climb when you buy spice cards.</p>
+    <ul><li><strong>Lead</strong> a track at season end: 5 points (Saffron 7), shown on each tab.</li><li>Reach the banded <strong>MOQ</strong> space: 2 points at season end.</li><li>Reach the <strong>top</strong> (dashed): 2 points (Saffron 5) right away.</li><li>Grey squares are neutral cubes: they take up space.</li></ul>`);
+  snap('The market', `<p>Every card in the market grows into a <strong>lot</strong>: its badge (+1, +2, +3) says how many extra cards it gets. Lots mix it up:</p>
+    <ul><li>Lot 1: a <strong>coin</strong> card, worth 5 points when bought.</li><li>Lot 2: a <strong>double</strong> Garlic (two icons, moves two spaces) with a <strong>salt</strong> shaker.</li><li>Lot 3: a <strong>Saffron</strong> base, the richest track.</li></ul>
+    <p class="muted">A Saffron or coin base card lies sideways: it can’t be kept.</p>`);
+  const mk = (owner, ns) => ({ owner, idx: +owner.slice(1), bid: makeBid(ns.map(C)) });
+  g.lastBids = [mk('p0', [14, 12]), mk('p1', [78]), mk('p2', [59]), mk('p3', [44])];
+  snap('Secret bids', `<p>Everyone bids at once, in secret: <strong>one card</strong>, or <strong>two of the same spice</strong>. Any pair beats any single; otherwise the higher number wins.</p>
+    <p>Ana’s pair of Chili beats Ben’s Saffron 78. Players buy lots in this order, best bid first.</p><p class="muted">Bid cards leave your hand, so a strong bid costs you cards you might have kept.</p>`);
+  g.phase = 'buying';
+  const take = num => { const k = g.market.findIndex(l => l.num === num); const l = g.market.splice(k, 1)[0]; g.taken.push({ num, owner: l.owner }); return l; };
+  let l = take(2); g.taken[g.taken.length - 1].owner = 'p0';
+  g.moveWith('p0', [C(17), C(46), C(61)], 'buys');
+  snap('Ana buys Lot 2', `<p>Ana moves up the track of every spice in the lot:</p>
+    <ul><li><strong>Chili 17</strong>: occupied spaces don’t count, so she <strong>skips</strong> the cube and Ben and lands on the MOQ.</li>
+    <li><strong>Garlic 46</strong> is salted: <strong>salt can’t skip</strong>. The cube right above her blocks both moves.</li>
+    <li><strong>Oregano 61</strong> takes her to the <strong>top</strong> (+2), knocking Cleo down to the MOQ.</li></ul>`);
+  g.players[0].stored.push(C(61));
+  snap('Keep one card', `<p>After buying, Ana <strong>stores one card</strong> from the lot (Oregano 61) and discards the rest. Storing never moves you.</p>
+    <p>Stored cards come back to your hand next season, so every purchase also builds your next hand.</p>`);
+  l = take(1); g.taken[g.taken.length - 1].owner = 'p1';
+  g.credit('p1', 5, 'coin'); g.moveWith('p1', [C(70)], 'buys'); g.players[1].stored.push(C(70));
+  l = take(3); g.taken[g.taken.length - 1].owner = 'p2';
+  g.moveWith('p2', [C(76), C(52)], 'buys'); g.players[2].stored.push(C(52));
+  l = take(4); g.taken[g.taken.length - 1].owner = 'p3';
+  g.moveWith('p3', [C(25), C(9), C(40)], 'buys'); g.players[3].stored.push(C(25));
+  snap('Everyone else buys', `<ul><li><strong>Ben</strong> takes the coin lot: +5 points, and Curry 70 lifts him to the MOQ. He can’t keep the coin base, so he keeps Curry 70.</li>
+    <li><strong>Cleo</strong> takes the Saffron lot and keeps Turmeric 52 (the Saffron base can’t be kept).</li>
+    <li><strong>Dev</strong> gets the last lot. Cinnamon 25 skips three occupied spaces to his MOQ.</li></ul>`);
+  g.lastBids = null; g.phase = 'auction';
+  g.market = [lot(1, [14, 3, 7, 30]), lot(2, [78, 66]), lot(3, [59, 48]), lot(4, [44, 22, 38])];
+  g.taken = [];
+  snap('The bids restock the market', `<p>The bids become the next lots: from a pair, the higher card goes to the market (Chili 14) and the lower is discarded. Each new base card gets its extra cards.</p>
+    <p>So every bid also decides what everyone can buy next.</p>`);
+  g.phase = 'seasonEnd';
+  g.moveWith('p3', [C(50), C(27)], 'stores');
+  snap('End of season: leftover cards move you', `<p>After three auctions, everyone reveals the cards left in hand. Each one moves its owner, just like buying it.</p>
+    <p>Dev’s Turmeric 50 skips the cube, and Cinnamon 27 takes him to space 7.</p>`, { revealing: { owner: 'p3', cards: [50, 27] } });
+  g.phase = 'scoring';
+  const rows = [];
+  for (const sp of BOARD_ORDER) {
+    const t = TRACKS[sp], leader = leaderOf(g.tracks, sp), aw = [];
+    if (leader) { g.credit(leader, t.lead, 'lead'); aw.push(`${g.nameOf(leader)} leads +${t.lead}`); }
+    for (const m of g.tracks[sp]) if (m.owner !== 'n' && m.owner !== leader && m.pos >= t.moq) { g.credit(m.owner, MOQ_PTS, 'moq'); aw.push(`${g.nameOf(m.owner)} MOQ +${MOQ_PTS}`); }
+    rows.push(`<tr><td>${SUIT_NAME[sp]}</td><td>${aw.join(', ') || 'nobody scores'}</td></tr>`);
+  }
+  snap('Season scoring', `<p>Each track pays its leader and everyone else at or above the MOQ.</p><div class="scroll"><table class="st"><tbody>${rows.join('')}</tbody></table></div>`);
+  snap('The end of the game', `<p>After season 3, the game ends with an endgame bonus. Two versions can be tested (Rule options):</p>
+    <ul><li><strong>Cash-out</strong>: your last three stored cards make one final bid for 1st / 2nd / 3rd place points.</li><li><strong>Final auction</strong>: stored cards come back to your hand for one more auction, then season 3 is scored.</li></ul>
+    <p><strong>Specialization</strong> (optional module): bonus points for tracks you never moved on, 7 / 17 / 30.</p><p>Most points wins.</p>`);
+  return steps;
+}
+function walkBoxHTML(W) {
+  const k = ui.walk.k, n = WALK_STEPS().length;
+  return `<div class="prompt walkbox"><div><h3>${esc(W.title)}</h3>${W.html}</div><div class="actions walknav"><span class="walkstep">Step ${k + 1} of ${n}</span>
+    <button class="btn" data-act="walkBack" ${k ? '' : 'disabled'}>Back</button><button class="btn primary" data-act="walkNext" ${k < n - 1 ? '' : 'disabled'}>Next</button><button class="btn" data-act="walkStart" title="Open the publisher demo table and play">Start game</button></div></div>`;
+}
+function startWalk() {
+  if (ui.online.role) leaveOnline();
+  Object.assign(ui, { view: 'table', walk: { k: 0 }, humans: [], viewer: null, watch: false, pending: null, modal: null, coach: null, tutorial: false, replayOf: null, bidRound: null, seasonSummary: null, scoreFx: null, toast: null });
+  walkGo(0);
+  window.scrollTo(0, 0);
+}
+async function walkGo(k) {
+  const steps = WALK_STEPS();
+  if (!ui.walk || k < 0 || k >= steps.length) return;
+  const forward = k === ui.walk.k + 1;
+  ui.walk.k = k;
+  const gen = ++ui.gen;
+  const st = steps[k];
+  ui.game = viewFromState(st.state);
+  ui.anim = null; ui.lastMoves = []; ui.moves = [];
+  render();
+  if (forward && st.moves.length) {
+    ui.moves = st.moves; await animateMoves(gen);
+    if (gen !== ui.gen) return;
+    ui.lastMoves = st.moves; ui.movedAt = Date.now(); render();
+  } else if (st.moves.length) { ui.lastMoves = st.moves; ui.movedAt = Date.now(); render(); }
 }
 function quitToHome() { if (ui.online.role) leaveOnline(); ui.gen++; Object.assign(ui, { view: 'home', game: null, pending: null, coach: null, modal: null, bidRound: null, anim: null, viewOnly: null }); render(); }
 function replayJSON(r, g) {
@@ -1403,7 +1584,7 @@ function renderHome() {
       <section class="panel"><h2>Rules</h2><p>The full rules, with the 2-player Deck Bot.</p><button class="btn" data-act="rules">Read the rules</button></section>
       <section class="panel"><h2>Simulate</h2><p>Run hundreds of bot games and see balance statistics.</p><button class="btn" data-act="openSim">Open the simulator</button></section>
       <section class="panel"><h2>Replay a file</h2><p>Load a saved replay file and watch it play out.</p><button class="btn" data-act="openLoad">Load a replay</button></section>
-      <div class="demo-link"><button class="btn small" data-act="openDemo" title="Online table for 4 with the demo deal (seed ${DEMO_SEED})">Demo to publisher</button></div>
+      <div class="demo-link"><button class="btn small" data-act="openWalk" title="Step through the game on an example deal, without a live game, so no hand is shown">Pitch walkthrough</button> <button class="btn small" data-act="openDemo" title="Online table for 4 with the demo deal (seed ${DEMO_SEED})">Demo to publisher</button></div>
     </div>
   </div></div>`;
 }
@@ -1412,7 +1593,8 @@ function renderHome() {
 function renderTable() {
   const g = ui.game;
   if (!g || !g.tracks.saffron) { $app.innerHTML = '<div class="bar"><span class="brand">Saffron Salt</span><span class="phase">Dealing cards</span></div>'; return; }
-  const ph = phaseLabel(g);
+  const W = ui.walk ? WALK_STEPS()[ui.walk.k] : null;
+  const ph = W ? { big: 'Pitch walkthrough', step: W.title } : phaseLabel(g);
   const pips = g.season >= 1 && g.season <= 3 ? `<span class="pips" aria-hidden="true">${[1, 2, 3].map(k => `<i class="${k <= g.season ? 'on' : ''}"></i>`).join('')}</span>` : '';
   const ni = netInfo(g);
   const bidReady = new Set(g.bidReady || (ui.bidRound ? ui.bidRound.list.filter((_, k) => ui.bidRound.choices[k] !== null && ui.bidRound.kinds[k] !== 'bot').map(([i]) => i) : []));
@@ -1424,22 +1606,22 @@ function renderTable() {
   }), ...(g.hasBot ? [`<div class="chip">${dotHTML('bot')}<span class="nm">Deck Bot</span><span class="sc">${g.botRules?.scoring === false ? '<span class="muted" style="font-size:14px">not scoring</span>' : g.bot.money}</span></div>`] : [])].join('');
   const toast = ui.toast && Date.now() - ui.toast.at < 2600 ? `<div class="toast" role="status" style="animation-delay:-${Date.now() - ui.toast.at}ms">${esc(ui.toast.text)}</div>` : '';
   $app.innerHTML = `
-  <div class="bar"><span class="brand">Saffron Salt</span><span class="phase">${esc(ph.big)}${pips}</span><span class="muted">${ui.online.role ? `Table ${esc(ui.online.code)}, ` : ''}Seed ${esc(g.seed)}${ui.tutorial ? ', walkthrough' : ''}${ui.replayOf ? ', replay' : ''}</span><span class="spacer"></span>
-    ${ui.online.role === 'guest' ? '' : ui.watch || !ui.pending ? `<button class="btn small" data-act="pause">${ui.paused ? 'Resume' : 'Pause'}</button>` : ''}
-    <button class="btn small" data-act="rules">Rules</button><button class="btn small" data-act="log">Game log</button>${ui.online.role === 'guest' ? '<button class="btn small" data-act="leaveGame">Leave</button>' : '<button class="btn small" data-act="quit">Quit</button>'}</div>
+  <div class="bar"><span class="brand">Saffron Salt</span><span class="phase">${esc(ph.big)}${pips}</span><span class="muted">${ui.online.role ? `Table ${esc(ui.online.code)}, ` : ''}${W ? 'Example deal, not a live game' : `Seed ${esc(g.seed)}`}${ui.tutorial ? ', walkthrough' : ''}${ui.replayOf ? ', replay' : ''}</span><span class="spacer"></span>
+    ${W ? '' : ui.online.role === 'guest' ? '' : ui.watch || !ui.pending ? `<button class="btn small" data-act="pause">${ui.paused ? 'Resume' : 'Pause'}</button>` : ''}
+    ${W ? '<button class="btn small" data-act="walkExit">Exit walkthrough</button>' : ''}<button class="btn small" data-act="rules">Rules</button>${W ? '' : `<button class="btn small" data-act="log">Game log</button>${ui.online.role === 'guest' ? '<button class="btn small" data-act="leaveGame">Leave</button>' : '<button class="btn small" data-act="quit">Quit</button>'}`}</div>
   <div class="scores" aria-label="Scores">${chips}</div>
   ${toast}
   <div class="stage">
     <div class="stepline"><span class="stepbig">${esc(ph.big)}</span><span class="stepnow">${esc(ph.step)}</span></div>
     ${seasonPanelHTML(g)}
-    ${promptHTML(g)}
+    ${W ? walkBoxHTML(W) : promptHTML(g)}
     <div class="mkrow ${g.lastBids ? 'withbids' : ''}">${marketHTML(g)}${bidsHTML(g)}</div>
-    ${handHTML(g, ui.viewer)}
+    ${W ? '' : handHTML(g, ui.viewer)}
   </div>
   <div class="lower">
     <section class="board" aria-label="Spice tracks">${(() => { const lm = liveMoment(g); return lm && (lm.big || ui.scoreFx) ? `<div class="callout" style="border-color:${lm.color}"><span class="cdot" style="background:${lm.color}"></span><strong>${esc(lm.title)}:</strong> ${esc(lm.text)}</div>` : ''; })()}<div class="tracks">${BOARD_ORDER.map(s => trackHTML(g, s)).join('')}</div>
       <p class="muted" style="margin:8px 0 0;font-size:13px">Lead bonus on each tab. Dashed space: the top, which pays each time you reach it. Banded space: the MOQ (Minimum Order Quantity), worth 2 at season end. Grey squares: neutral cubes. Dashed rings: where a selected lot would take you.</p></section>
-    ${tickerHTML(g)}
+    ${W ? "" : tickerHTML(g)}
   </div>`;
 }
 // Ghost positions for the selected lot (U7).
@@ -1500,7 +1682,7 @@ function trackHTML(g, s) {
     rows += `<div class="${cls.join(' ')}" aria-label="${SUIT_NAME[s]} space ${pos}">${ghostEl}${lbl}${mk}${gh}${fxEl}</div>`;
   }
   const leader = leaderOf(tracks, s);
-  return `<div class="track s-${s} ${sf ? 'scoring' : ''} ${am ? 'active' : ''}"><div class="thead"><span class="lead" title="Lead bonus at season end">${t.lead}</span><div class="tn">${ic(s)} ${SUIT_NAME[s]}</div><div class="tlead">${leader ? `Lead: ${esc(g.nameOf(leader))}` : 'No leader'}</div></div>${rows}</div>`;
+  return `<div class="track s-${s} ${sf ? 'scoring' : ''} ${am ? 'active' : ''}"><div class="thead"><span class="lead" title="Lead bonus: at season end, the single marker furthest ahead on ${SUIT_NAME[s]} scores ${t.lead}. Others at or above the MOQ score 2.">${t.lead}</span><div class="tn">${ic(s)} ${SUIT_NAME[s]}</div><div class="tlead">${leader ? `Lead: ${esc(g.nameOf(leader))}` : 'No leader'}</div></div>${rows}</div>`;
 }
 function marketHTML(g) {
   if (!g.market.length) return `<section class="box market"><h4>Market</h4></section>`;
@@ -1538,16 +1720,16 @@ function liveMoment(g) {
   return null;
 }
 function tickerHTML(g) {
-  const lines = g.log.slice(-8).reverse();
+  const lines = g.log.slice(-16).reverse(); // U22: tall enough not to scroll
   return `<div class="box"><h4>Latest</h4><div class="ticker" aria-live="polite">${lines.map(l => { const t = l.replace(/^\[[^\]]*\]\s*/, ''); return /^» /.test(t) ? `<div class="moment">${esc(t.slice(2))}</div>` : `<div>${esc(t)}</div>`; }).join('')}</div></div>`;
 }
 function seasonPanelHTML(g) {
   const s = ui.seasonSummary;
-  if (!s || ui.modal?.type === 'season') return '';
+  if (!s || ui.modal?.type === 'season' || ui.pending?.req.type === 'ack') return '';
   return `<section class="box seasonbox"><h4>Season ${s.season} results</h4>${seasonTable(s)}</section>`;
 }
 function seasonTable(s) {
-  return `<div class="scroll"><table class="st"><thead><tr><th></th><th>Gained</th>${CAT.filter(([k]) => k !== 'cashout' && k !== 'spec').map(([k, l]) => `<th${k === 'moq' ? ` title="${MOQ_TIP}"` : ''}>${l}</th>`).join('')}<th>Total</th></tr></thead><tbody>
+  return `<div class="scroll"><table class="st"><thead><tr><th></th><th title="Points gained this season">Gained</th>${CAT.filter(([k]) => k !== 'cashout' && k !== 'spec').map(([k, l]) => `<th title="${esc(CAT_TIP[k])}">${l}</th>`).join('')}<th title="Score so far">Total</th></tr></thead><tbody>
     ${s.rows.map(r => `<tr><td>${dotHTML(r.owner)} ${esc(r.name)}</td><td><strong>+${r.gained}</strong></td>${CAT.filter(([k]) => k !== 'cashout' && k !== 'spec').map(([k]) => `<td>${r.by[k] ? '+' + r.by[k] : '–'}</td>`).join('')}<td>${r.total}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
@@ -1603,10 +1785,28 @@ function promptHTML(g) {
     const sel = ui.sel[0];
     return `<div class="prompt orderprompt"><div><h3>${who}Choose the order</h3><p>These cards affect each other on the tracks. Pick the order to apply them.</p>${p.req.groups.map((gr, k) => `<button class="opt ${gr.recommended ? 'rec' : ''}" data-act="selOpt" data-k="${k}" aria-pressed="${sel === k}">${gr.recommended ? `<span class="rectag">Recommended: ${esc(gr.why)}</span>` : ''}<span class="optcards">${gr.desc.map((d, j) => `<span class="optstep">${cardHTML(CARDS[d.n], { sm: true, ord: j + 1 })}<span>${esc(d.text)}</span></span>`).join('')}</span>${gr.gain ? `<span class="muted">+${gr.gain} points</span>` : ''}</button>`).join('')}</div><div class="actions"><button class="btn primary" data-act="confirm" ${sel !== undefined ? '' : 'disabled'}>Apply in this order</button></div></div>`;
   }
+  if (t === 'ack') return `<div class="prompt"><div><h3>${who}Click OK when you’re ready</h3><p>The game continues when every player has clicked OK.</p></div><div class="actions"><button class="btn primary" data-act="ackOk">OK</button></div></div>`;
   if (t === 'store') {
     return `<div class="prompt"><div><h3>${who}Keep one card</h3><p>Choose a card to store. Stored cards come back to your hand next season${g.variants?.endgame === 'auction' ? ', or for the final auction after season 3' : ', or make your cash-out bid after season 3'}.</p><div class="cards">${p.req.cards.map(n => cardHTML(CARDS[n], { pick: true, act: 'selCard', sel: ui.sel[0] === n })).join('')}</div></div><div class="actions"><button class="btn primary" data-act="confirm" ${ui.sel.length ? '' : 'disabled'}>Store card</button></div></div>`;
   }
   return '';
+}
+// U24: the analog reference card's content (the analog card doubles as the zero card that disguises single-card bids;
+// the digital game needs only its content). Not part of the hand and not selectable; click to enlarge.
+const REF_ROWS = [['saffron', 5, '74–78'], ['curry', 8, '66–73'], ['oregano', 9, '57–65'], ['turmeric', 10, '47–56'], ['garlic', 12, '35–46'], ['cinnamon', 15, '20–34'], ['chili', 19, '1–19']];
+function refCardBody(big) {
+  const rows = REF_ROWS.map(([s, q, r]) => `<tr><td class="s-${s}" style="color:var(--c)">${ic(s)}</td><td>${big ? SUIT_NAME[s] : SUIT_NAME[s].toUpperCase()}</td><td>${q}</td><td>${r}</td></tr>`).join('') + `<tr><td>●</td><td>${big ? 'Coins' : 'COINS'}</td><td>5</td><td>79–83</td></tr>`;
+  const table = `<table><thead><tr><th></th><th></th><th>${big ? 'Qty' : 'QTY'}</th><th>${big ? 'Range' : 'RANGE'}</th></tr></thead><tbody>${rows}</tbody></table>`;
+  if (!big) return table;
+  return `${table}
+    <h3>Bidding</h3><ul><li>One card, or two cards of the same spice (coins pair with coins).</li><li>Any pair beats any single; otherwise the higher card wins.</li></ul>
+    <h3>Order</h3><ul><li>3 seasons, 3 auctions a season.</li><li>Buy one lot per auction, in bid order; keep 1 card from it.</li></ul>
+    <h3>End of season</h3><ul><li>Cards left in your hand move you up their tracks.</li><li>Then score each track.</li></ul>
+    <h3>Scoring</h3><ul><li>Lead: 5 (Saffron 7).</li><li>At or above the MOQ: 2.</li><li>Reaching the top: 2 (Saffron 5).</li></ul>
+    <p class="muted" style="margin-top:12px">In the tabletop game this card also hides whether you bid one card or two. The digital game doesn’t need that, so it’s here for reference only.</p>`;
+}
+function refCardHTML() {
+  return `<div class="refcard" data-act="refCard" role="button" tabindex="0" title="Reference card: spice ranges and a rules summary. Not part of your hand. Click to enlarge." aria-label="Reference card, click to enlarge"><span class="rtag">REFERENCE</span>${refCardBody(false)}</div>`;
 }
 function cashoutHTML(g) {
   if (g.season !== 3) return '';
@@ -1624,7 +1824,7 @@ function handHTML(g, viewer) {
     const p = g.players[idx];
     const pend = ui.pending && ui.pending.i === idx && (ui.pending.req.type === 'seed' || ui.pending.req.type === 'bid');
     const hand = p.hand.slice().sort((a, b) => a.n - b.n);
-    return `<section class="box" aria-label="${esc(p.name)} hand"><h4>${dotHTML(p.id)} ${esc(p.name)}: hand</h4><div class="cards">${hand.map(c => cardHTML(c, { pick: pend, act: pend ? 'selCard' : null, sel: pend && ui.sel.includes(c.n), bid: idx === viewer && myBidCards.has(c.n) ? bidType : false })).join('') || '<span class="muted">Empty</span>'}</div></section>
+    return `<section class="box" aria-label="${esc(p.name)} hand"><h4>${dotHTML(p.id)} ${esc(p.name)}: hand</h4><div class="cards">${hand.map(c => cardHTML(c, { pick: pend, act: pend ? 'selCard' : null, sel: pend && ui.sel.includes(c.n), bid: idx === viewer && myBidCards.has(c.n) ? bidType : false })).join('') || '<span class="muted">Empty</span>'}${idx === viewer && !ui.watch ? refCardHTML() : ''}</div></section>
     <section class="box" aria-label="${esc(p.name)} storage"><h4>Stored cards</h4><div class="slots">${[0, 1, 2].map(k => p.stored[k] ? cardHTML(p.stored[k]) : '<div class="slot"></div>').join('')}</div>${cashoutHTML(g)}</section>`;
   };
   if (viewer !== null && viewer !== undefined) return `<div class="hand">${show(viewer)}</div>`;
@@ -1650,8 +1850,19 @@ function renderOverlay() {
   else if (m?.type === 'bidsIn' && ui.bidRound) {
     const br = ui.bidRound, g = ui.game;
     h = `<div class="scrim" style="background:var(--paper)"><div class="dialog" role="dialog" aria-modal="true" style="text-align:center;max-width:460px"><h2>${br.type === 'seed' ? 'All market cards are chosen' : 'All bids are in'}</h2><p>${br.type === 'seed' ? 'Reveal the market, or let a player change their card first. Choices stay hidden until revealed.' : 'Reveal the bids, or let a player change theirs first. Bids stay hidden until revealed.'}</p><div class="row" style="justify-content:center"><button class="btn primary" data-act="revealBids">${br.type === 'seed' ? 'Reveal the market' : 'Reveal bids'}</button>${br.list.map(([i], k) => br.kinds[k] === 'local' ? `<button class="btn" data-act="changeBid" data-k="${k}">Change ${esc(g.players[i].name)}’s ${br.type === 'seed' ? 'card' : 'bid'}</button>` : '').join('')}</div></div></div>`;
-  } else if (m?.type === 'season' && ui.seasonSummary) {
-    h = `<div class="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="sst" style="max-width:640px" data-stop><h2 id="sst">Season ${ui.seasonSummary.season} results</h2>${seasonTable(ui.seasonSummary)}<div class="row" style="margin-top:14px"><button class="btn primary" data-act="seasonOk">${ui.seasonSummary.season < 3 ? `On to season ${ui.seasonSummary.season + 1}` : 'On to final scoring'}</button></div></div></div>`;
+  } else if (m?.type === 'refcard') {
+    h = `<div class="scrim" data-act="closeModal"><div class="dialog refbig" role="dialog" aria-modal="true" aria-labelledby="rft" data-stop><button class="btn small close" data-act="closeModal">Close</button><h2 id="rft">Reference card</h2>${refCardBody(true)}</div></div>`;
+  } else {
+    const ack = ui.pending?.req.type === 'ack' ? ui.pending.req.kind : null;
+    const kind = m?.type === 'season' || m?.type === 'final' ? m.type : ack;
+    const btn = (label, a) => m?.auto ? '' : `<div class="row" style="margin-top:16px"><button class="btn primary big" data-act="${a}">${label}</button></div>`;
+    const act = ack && !m ? 'ackOk' : 'seasonOk';
+    if (kind === 'season' && ui.seasonSummary) {
+      const ss = ui.seasonSummary;
+      h = `<div class="scrim"><div class="dialog bigpanel" role="dialog" aria-modal="true" aria-labelledby="sst" data-stop><h2 id="sst">Season ${ss.season} results</h2><p class="muted" style="margin:-6px 0 10px">Hover a column heading to see how those points are earned.</p>${seasonTable(ss)}${btn(ss.season < 3 ? `OK, on to season ${ss.season + 1}` : 'OK, on to final scoring', act)}</div></div>`;
+    } else if (kind === 'final' && ui.finalReveal && ui.game) {
+      h = `<div class="scrim"><div class="dialog bigpanel finalrev" role="dialog" aria-modal="true" aria-labelledby="fst" data-stop><h2 id="fst">Final scoring</h2>${finalRevealHTML(ui.game, ui.finalReveal)}${btn('OK, show the results', act)}</div></div>`;
+    }
   }
   if (ui.coach && !m) {
     const [title, body] = TIPS[ui.coach.kind];
@@ -2108,6 +2319,7 @@ function validChoice(g, i, req, c) {
       case 'lot': case 'botLot': return g.market.some(l => l.id === c);
       case 'order': case 'endOrder': return Array.isArray(c) && c.length === req.cards.length && req.cards.every(n => c.includes(n));
       case 'store': return req.cards.includes(c);
+      case 'ack': return true;
     }
   } catch { }
   return false;
@@ -2131,7 +2343,7 @@ function hostBotTakeover(i) {
   const o = ui.online;
   o.botSeats.add(i);
   const pend = o.pending.get(i);
-  if (pend) { o.pending.delete(i); pend.resolve(BotAgent.decide(ui.game, i, pend.req)); }
+  if (pend) { o.pending.delete(i); pend.resolve(pend.req.type === 'ack' ? true : BotAgent.decide(ui.game, i, pend.req)); }
   publishState(); render();
 }
 async function hostStart() {
@@ -2161,7 +2373,8 @@ function snapshotFor(g) {
     botScoring: g.botRules.scoring, botStats: g.bot ? g.bot.st : null,
     bidReady: ui.bidRound ? ui.bidRound.list.filter((_, k) => ui.bidRound.choices[k] !== null && ui.bidRound.kinds[k] !== 'bot').map(([i]) => i) : null,
     scoreFx: ui.scoreFx, seasonSummary: ui.seasonSummary,
-    pending: [...o.pending.entries()].map(([seat, p]) => ({ seat, id: p.id, type: p.req.type, cards: p.req.cards })),
+    pending: [...o.pending.entries()].map(([seat, p]) => ({ seat, id: p.id, type: p.req.type, cards: p.req.cards, kind: p.req.kind || null })),
+    finalReveal: ui.finalReveal || null,
     result: r ? { ...r, decisions: undefined } : null,
   };
 }
@@ -2213,7 +2426,7 @@ function guestState(st) {
   o.state = st;
   const seat = guestSeat();
   const g = viewFromState(st);
-  ui.game = g; ui.scoreFx = st.scoreFx || null; ui.seasonSummary = st.seasonSummary || null;
+  ui.game = g; ui.scoreFx = st.scoreFx || null; ui.seasonSummary = st.seasonSummary || null; ui.finalReveal = st.finalReveal || null;
   if (!st.bidReady || !st.bidReady.includes(seat)) o.myBid = null;
   if (st.moves?.length && st.mvKey !== o.lastMvKey) {
     o.lastMvKey = st.mvKey; ui.moves = st.moves;
@@ -2223,7 +2436,7 @@ function guestState(st) {
   const mine = (st.pending || []).find(p => p.seat === seat && !o.answered.has(p.id));
   if (mine) {
     if (!ui.pending || ui.pending.id !== mine.id) {
-      const req = { type: mine.type, cards: mine.cards };
+      const req = { type: mine.type, cards: mine.cards, kind: mine.kind };
       if (req.type === 'order' || req.type === 'endOrder') req.groups = orderGroups(g, g.players[seat].id, req.cards);
       ui.sel = [];
       ui.pending = { i: seat, id: mine.id, req, resolve: v => { o.answered.add(mine.id); ui.pending = null; ui.sel = []; if (req.type === 'bid' || req.type === 'seed') o.myBid = { id: mine.id, cards: req.type === 'seed' ? [v] : v, type: req.type }; o.tr.presence({ answer: { id: mine.id, choice: v } }); render(); } };
@@ -2431,7 +2644,7 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role=button][data-act]')) { e.preventDefault(); act(e.target.dataset.act, e.target); }
   if (e.key === 'Enter' && e.target.dataset?.inp === 'logPw') { e.preventDefault(); act('logsLogin', e.target); }
-  if (e.key === 'Escape' && ui.modal && !['handoff', 'bidsIn', 'season'].includes(ui.modal.type)) { ui.modal = null; render(); }
+  if (e.key === 'Escape' && ui.modal && !['handoff', 'bidsIn', 'season', 'final'].includes(ui.modal.type)) { ui.modal = null; render(); }
 });
 document.addEventListener('input', e => {
   const k = e.target.dataset.inp; if (!k) return;
@@ -2484,7 +2697,7 @@ function act(a, el) {
     case 'tutorial': startGame({ seed: 'walkthrough-1', seats: [{ name: 'You', human: true }, { name: 'Clove', human: false }, { name: 'Mace', human: false }], botRule: 'notLeadingNoSaffron', tutorial: true }); return;
     case 'rules': ui.modal = { type: 'rules' }; break;
     case 'log': ui.modal = { type: 'log' }; break;
-    case 'closeModal': if (!['handoff', 'bidsIn', 'season'].includes(ui.modal?.type)) ui.modal = null; break;
+    case 'closeModal': if (!['handoff', 'bidsIn', 'season', 'final'].includes(ui.modal?.type)) ui.modal = null; break;
     case 'pause': ui.paused = !ui.paused; break;
     case 'quit': ui.modal = { type: 'quit' }; break;
     case 'quitYes': quitToHome(); return;
@@ -2507,6 +2720,8 @@ function act(a, el) {
     case 'coachOk': { const c = ui.coach; ui.coach = null; render(); c?.res(); return; }
     case 'coachOff': { const c = ui.coach; ui.coach = null; ui.tutorial = false; render(); c?.res(); return; }
     case 'seasonOk': { const m = ui.modal; ui.modal = null; render(); m?.res?.(); return; }
+    case 'ackOk': ui.pending?.resolve(true); return;
+    case 'refCard': ui.modal = { type: 'refcard' }; break;
     case 'revealBids': ui.bidRound?.reveal(); return;
     case 'changeBid': { const k = +el.dataset.k; ui.modal = null; ui.viewer = null; ui.bidRound?.undo(k); return; }
     case 'undoBid': { const br = ui.bidRound; if (br && ui.myBid) { const k = br.list.findIndex(([i]) => i === ui.myBid.i); br.undo(k); } return; }
@@ -2522,6 +2737,11 @@ function act(a, el) {
     case 'sameSeed': startGame({ seed: ui.result.seed, seats: ui.lastSettings.seats, botRule: ui.lastSettings.botRule, botScoring: ui.lastSettings.botScoring, variants: ui.lastSettings.variants, online: ui.online.role === 'host' }); return;
     case 'clearSel': ui.sel = []; break;
     case 'openDemo': openDemo(); return;
+    case 'openWalk': startWalk(); return;
+    case 'walkNext': walkGo(ui.walk.k + 1); return;
+    case 'walkBack': walkGo(ui.walk.k - 1); return;
+    case 'walkStart': ui.walk = null; ui.gen++; ui.game = null; ui.anim = null; ui.lastMoves = []; openDemo(); return;
+    case 'walkExit': ui.walk = null; quitToHome(); return;
     case 'openOnline': ui.online.demo = false; ui.view = 'online'; ui.online.status = ui.online.status === 'ready' ? 'ready' : 'connecting'; netConnect().then(ok => { ui.online.status = ok ? 'ready' : 'none'; if (ui.view === 'online') render(); }); break;
     case 'hostCreate': hostCreate(); return;
     case 'guestJoin': guestJoin(); return;

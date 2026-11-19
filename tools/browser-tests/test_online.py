@@ -23,8 +23,10 @@ async def main():
         for _ in range(9000):
             await host.wait_for_timeout(50)
             g = guest.locator('[data-act=guestUndo]'); h = host.locator('[data-act=undoBid]')
-            if len(changes) < 4 and await g.count(): changes.append('guest'); await g.click(); continue
-            if len(changes) < 4 and await h.count(): changes.append('host'); await h.click(); continue
+            try:  # short timeout: the button can re-render mid-click; then just try again next round
+                if len(changes) < 4 and await g.count(): await g.click(timeout=3000); changes.append('guest'); continue
+                if len(changes) < 4 and await h.count(): await h.click(timeout=3000); changes.append('host'); continue
+            except Exception: continue
             await step(host); await step(guest)
             if await guest.locator('.results h1').count() and await host.locator('.results h1').count(): break
         same = await host.locator('.podium').inner_text() == await guest.locator('.podium').inner_text()

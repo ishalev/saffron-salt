@@ -6,8 +6,10 @@ from drv import step, launch_args
 URL = 'http://localhost:8772/'
 
 async def watch(pg, seen):
-    if await pg.locator('.lot.taken').count(): seen['taken'] = True
-    if 'Final auction' in await pg.locator('.stepline').inner_text() if await pg.locator('.stepline').count() else False: seen['final'] = True
+    try:
+        if await pg.locator('.lot.taken').count(): seen['taken'] = True
+        if await pg.locator('.stepline').count() and 'Final auction' in await pg.locator('.stepline').inner_text(timeout=300): seen['final'] = True
+    except Exception: pass  # the page re-rendered between the check and the read
 
 async def main():
     async with async_playwright() as p:

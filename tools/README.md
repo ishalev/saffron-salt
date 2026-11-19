@@ -35,6 +35,7 @@ cd tools/browser-tests
 python3 test_local.py      # single device, feedback, game logs, replay, pass-and-play change
 python3 test_online.py     # host and guest in two browsers, both change a choice, results must match
 python3 test_options.py    # rule options (no specialization, final auction) locally and online; greyed bought lots
+python3 test_pitch.py      # pitch walkthrough, reference card, season/final panels, everyone clicks OK online
 ```
 
 On Windows, run the server in one PowerShell window and the tests in another:
@@ -45,6 +46,7 @@ powershell -ExecutionPolicy Bypass -File .\serve.ps1   # same as serve.sh; Ctrl+
 py test_local.py
 py test_online.py
 py test_options.py
+py test_pitch.py
 ```
 
 ## Restoring after a lost workspace
