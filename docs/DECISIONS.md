@@ -1,13 +1,13 @@
 # Saffron Salt — Issues and Decisions Log
 
-**Current release: v1.21e** (Nov 11, 2026). This file is the single source of truth from Oct 14, 2026; it was moved here from the Claude Doc "Saffron Salt — Issues and Decisions Log", which is now an archived copy.
+**Current release: v1.22a** (Nov 19, 2026). This file is the single source of truth from Oct 14, 2026; it was moved here from the Claude Doc "Saffron Salt — Issues and Decisions Log", which is now an archived copy.
 
 ## How to use this log
 
 Every issue and decision is tied to the version it was found in or tested on.
 
 - **Status values:** Planned (accepted, scheduled for a version), To test (needs a simulation before a decision), Deferred, Rejected, Closed (shipped or resolved).
-- **IDs:** G = gameplay, U = UI, T = test before inclusion, D = deferred, N = found in testing, R = rejected. IDs stay fixed once assigned; continue numbering from the highest used (G7, U19, T1, D5, N3, R5).
+- **IDs:** G = gameplay, U = UI, T = test before inclusion, D = deferred, N = found in testing, R = rejected. IDs stay fixed once assigned; continue numbering from the highest used (G8, U20, T2, D5, N4, R5).
 - **Sources:** Isaac's in-chat feedback, Isaac–Mitch playtest calls (Oct 6, 2026, [recording](https://fathom.video/calls/848473309)), and simulations.
 - **Updating:** when a decision is made or an issue closes, add a dated row to the Decisions log, move the issue, and record any test results with method and sample size.
 
@@ -45,6 +45,12 @@ Newest first. "Version" is the version the decision was tested on or applies fro
 
 | Date | Version | Decision | Reasoning and evidence |
 | --- | --- | --- | --- |
+| Nov 19, 2026 | v1.22a | Released v1.22a: U20 (fixed lot numbers), G8 (specialization bonus option) and T2 (final auction endgame option). Options default to the standard game; they are saved with replays, game records and online tables. | Approved by Isaac after the R&R pitch so Frank can test both options. Engine self-test covers 24 games with the options (replays exact, 83 cards, no cash-out or specialization points when off, final auction between S3 A3 and season 3 scoring, nothing stored in it). Browser-tested locally and online (new `test_options.py`: greyed bought lots, final auction phase, options shown to the guest and on results, identical host and guest results); existing local and online tests pass. `test_online.py` sometimes times out clicking a re-rendering button (1 of 8 runs on v1.21e, 2 of 9 on v1.22a); a test-timing flake, not a game fault. Endgame comparison under Test results. |
+| Nov 19, 2026 | v1.22a | Next build is v1.22a, not v1.21f. Versioning: the number changes when rules or gameplay are added, even as optional settings; the letter is for fixes and UI changes. | Isaac: G8 and T2 add gameplay, and which settings become the default is still to be tested. |
+| Nov 19, 2026 | v1.22a | Approved T2: "Endgame" setting, Cash-out (default) or Final auction (stored cards return to hand, one more auction for plain lots from season 3's last bids, unbid cards discarded, season 3 scoring after it, no cash-out points). Planned for the next build, then simulate against the cash-out. | R&R pitch feedback (Frank, Vinny): the cash-out felt passive and swung results; Vinny's one-more-bid idea, with Isaac's choice of plain lots. |
+| Nov 19, 2026 | v1.22a | Approved G8: "Specialization bonus" on/off setting, default on, in local, online and simulator games; saved with each game record. Planned for the next build. | R&R pitch feedback (Frank, Vinny): bonus swings frustrate new players; Isaac wants an option for testing, not removal. |
+| Nov 19, 2026 | v1.22a | Approved U20: lots keep their numbers until the next market; a bought lot leaves a greyed "bought by" slot. Planned for the next build. | R&R pitch feedback (Vinny): renumbering made it hard to track which lot was taken. UI only. |
+| Nov 19, 2026 | v1.21e | Storing rules confirmed as implemented; no change, no new version. Only a Saffron or coin **base** card can't be stored. Saffron and coin **extras** can be stored (a coin extra is cashed first, then may be stored). A stored coin left in hand at season end does nothing; a stored Saffron moves you at season end like any spice. No facedown cards since v1.21a. Closes N4 without change. | Isaac confirmed this matches what he and Mitch decided, after the R&R pitch raised "money cards shouldn't be storable." Engine check: 1,000 bot games, no violations of the written rules (Storing check, Nov 19, 2026). |
 | Nov 11, 2026 | v1.21e | Released v1.21e: the demo is a single "Demo to publisher" button (bottom of the right column) that creates an online table for 4 with the demo deal. v1.21d's local Demo option and lobby Deal choice are removed. Only index.html changes. | Isaac: pitches always use online play, even in the same room, so the local option and the lobby toggle are unnecessary; he wants one discreet button that sets everything up. Demo tables can't drop below 4 seats (no Nobody option) so the deal guarantee holds; empty seats can be Bots. Host name is remembered on the device. Browser-tested: first use asks for a name, second use opens the table in one click, guest joined and both screens show seed demo-3904; existing local and online tests pass. v1.21d was pushed to GitHub but not deployed. |
 | Nov 11, 2026 | v1.21d | Released v1.21d (U19): a Demo game with fixed seed `demo-3904` for publisher pitches, offered locally ("Demo" beside the player counts) and online ("Deal: Demo" when 4 seats are filled). Only index.html changes. | Requested by Isaac: in a 4-player pitch, every seat should see a pair, a high card (Saffron or coin) and a salted double, even if only a few turns are played. The deal depends only on the seed, so it holds whoever sits where and whether seats are human or bot. Searched demo-1 to demo-41023: 8 seeds qualify (about 1 in 5,000). Chose demo-3904 because each player's pair is in a different suit (Chili, Turmeric, Cinnamon, Oregano), high cards mix Saffron and coins, and the four salted doubles differ. Strict test: the high card and salted double are outside the pair. Self-test now fails if a rules change breaks the demo deal. Browser-tested locally (demo game played to the end; switching back to 3 players restores a random seed) and online (host and guest both on seed demo-3904); existing local and online tests pass. |
 | Oct 14, 2026 | v1.21c | Build and release work moves to Claude Code; this log, the rules (`docs/RULES.md`) and the working brief (`CLAUDE.md`) move into the repository. The Claude Doc log is archived. | Isaac doesn't want to update GitHub by hand each release. Claude Code commits, tags and pushes with Isaac's own GitHub sign-in; keeping the log in the repository lets it be updated with each release. |
@@ -82,10 +88,19 @@ Newest first. "Version" is the version the decision was tested on or applies fro
 
 ## Closed issues
 
+### Closed in v1.22a
+
+| ID | Issue | Resolution |
+| --- | --- | --- |
+| U20 | Lots renumbered after one was bought | Each lot keeps its number until the market is restocked; a bought lot shows as a greyed "Lot 2, Bought by …" slot; buying log lines name the lot number |
+| G8 | No way to test without the specialization bonus | "Specialization bonus" option (default on) in local games, online lobby and simulator; when off, no bonus, no +N hint, and bots stop planning for it |
+| T2 | Cash-out felt passive (R&R pitch) | "Endgame" option: Cash-out (default) or Final auction. Final auction: after season 3's end-of-season movement, extras are dealt, stored cards return to hand, one more auction (Deck Bot included), buy as usual but store nothing, discard unbid cards, then score season 3; no cash-out points |
+
 ### Closed in v1.21d–e
 
 | ID | Issue | Resolution |
 | --- | --- | --- |
+| N4 | At the R&R pitch, coin extras could be stored and it looked like a bug ([41:48](https://fathom.video/calls/906177727?timestamp=2508)) | No change: Isaac confirmed Nov 19 that only a Saffron or coin base card is unstorable; extras can be stored |
 | U19 | Pitch demos need every player to see the main choices quickly | v1.21e: "Demo to publisher" button creates an online 4-player table. Seed `demo-3904`. Starting hands: P1 Saffron 77, Curry 73 x2 (salt), Chili pair (19, 15, 14), Cinnamon 33, Oregano 59; P2 Coin 82 (+5), Turmeric 56 x2 (salt), Turmeric pair (52, 51, 50), Garlic 36, Cinnamon 32; P3 Coin 79 (+2), Oregano 65 x2 (salt), Cinnamon pair (29, 26, 24), Curry 71, Chili 16; P4 Coin 80 (+2), Saffron 74, Cinnamon 34 x2 (salt), Oregano pair (62, 57), Turmeric 55, Garlic 44 |
 
 ### Closed in v1.21c
@@ -147,6 +162,39 @@ Newest first. "Version" is the version the decision was tested on or applies fro
 ## Test results
 
 All runs use bots in every seat; human play may differ. Reproduce with the scripts in `tools/` (see `tools/README.md`).
+
+### Endgame comparison: cash-out vs. final auction (Nov 19, 2026; v1.22a; no decision yet)
+
+Method: 250 bot games per player count (seeds `endgame-<players>-0` to `-249`, 2,000 games), each played once with the cash-out and once with the final auction; specialization on. Both modes play identically until the end of season 3 (checked on 100 seeds), so "no endgame" is the cash-out game minus its cash-out points. "Endgame points" is what each player gained from the endgame (for the final auction, its tops and coins plus its effect on season 3 scoring and specialization). Bots were not tuned for the final auction. Gaps and winners count players only, not the Deck Bot.
+
+| Players | Endgame | Endgame points per player | Gap 1st–last | Gap 1st–2nd | Endgame changed the winner |
+|---|---|---|---|---|---|
+| 2 | Cash-out | 3.9 | 17.9 | 17.9 | 13% |
+| 2 | Final auction | 4.3 | 17.7 | 17.7 | 11% |
+| 3 | Cash-out | 3.0 | 27.6 | 13.3 | 14% |
+| 3 | Final auction | 3.1 | 27.5 | 13.5 | 14% |
+| 4 | Cash-out | 4.3 | 31.0 | 11.4 | 21% |
+| 4 | Final auction | 2.3 | 29.7 | 10.9 | 20% |
+| 5 | Cash-out | 6.4 | 38.1 | 11.2 | 31% |
+| 5 | Final auction | 2.4 | 35.0 | 10.6 | 26% |
+
+Reading: at 2–3 players the two endgames are about equal. At 4–5 players the final auction moves fewer points (2.3–2.4 vs. 4.3–6.4 per player) and spreads scores slightly less, but it still changes the winner in a fifth to a quarter of games, because the last purchases shift season 3 leads. Whether it feels more strategic is a question for human play.
+
+### Storing check (Nov 19, 2026; v1.21e)
+
+Method: 1,000 bot games (seeds `storecheck-<players>-0` to `-249`, 250 each at 2, 3, 4 and 5 players), with the engine wrapped to check every storing rule as it happens: 31,500 player purchases, 2,250 Deck Bot purchases, 3,000 season ends, 1,000 cash-outs (250 with the Deck Bot). No violations of the rules as written in `docs/RULES.md`:
+
+| Rule | Result |
+| --- | --- |
+| Store exactly one card from each lot bought, from that lot | Pass (31,500 of 31,500) |
+| Saffron or coin base card never stored | Pass (4,286 such lots) |
+| Storing never moves anyone | Pass |
+| Deck Bot stores nothing | Pass |
+| Season end: cards left in hand move you, best hand bid goes first, Deck Bot first | Pass (3,000) |
+| After seasons 1 and 2: stored cards return to hand, plus 3 dealt | Pass (2,000) |
+| Cash-out: three stored cards, ranked by best bid, points 7/2/0, 10/5/2/0, 15/10/5/2/0 | Pass (1,000) |
+
+Coin extras were stored 2,379 times and Saffron extras 2,564 times, both allowed (confirmed by Isaac Nov 19; N4 closed without change). For reference, if coins were ever made unstorable: 161 of 31,500 purchases (0.5%) would leave nothing to store, and 51 of 4,000 player-games would reach the cash-out with fewer than three stored cards (seeds `nocoin-*`, same method).
 
 ### Physical coin supply (Nov 11, 2026; v1.21c rules; no decision yet)
 

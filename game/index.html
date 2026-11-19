@@ -67,7 +67,7 @@ svg.ic { width: 1em; height: 1em; stroke: currentColor; fill: none; stroke-width
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .seat { display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; align-items: center; margin-bottom: 8px; }
 .dot { width: 16px; height: 16px; border-radius: 50%; display: inline-block; }
-input[type=text], select, textarea { font: inherit; color: var(--ink); background: var(--paper); border: 1.5px solid var(--line); border-radius: 6px; padding: 6px 10px; width: 100%; }
+input[type=text], select, textarea { font: inherit; color: var(--ink); background: var(--paper); border: 1.5px solid var(--line); border-radius: 6px; padding: 6px 10px; width: 100%; box-sizing: border-box; }
 textarea { min-height: 140px; font-size: 13px; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .side-actions { display: grid; gap: 12px; }
@@ -141,6 +141,8 @@ details summary { cursor: pointer; font-weight: 400; }
 .lots { display: grid; gap: 8px; }
 .lot { display: flex; gap: 8px; align-items: center; border: 1.5px solid var(--line); border-radius: 8px; padding: 6px 8px; background: var(--paper); }
 .lot .ln { font-family: var(--num); font-size: 13px; color: var(--muted); width: 40px; }
+.lot.taken { opacity: .55; border-style: dashed; }
+.lot.taken .boughtby { font-size: 14px; color: var(--muted); padding: 6px 0; }
 .lot.pick { cursor: pointer; }
 .lot.pick:hover { border-color: var(--muted); }
 .lot[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
@@ -312,7 +314,7 @@ table.logs td.acts .btn + .btn { margin-left: 6px; }
 // Runs in Node and the browser. No dependencies.
 
 const ENGINE_VERSION = '0.3.0';
-const RULES_VERSION = '1.21e';
+const RULES_VERSION = '1.22a';
 
 const SPICES = ['saffron', 'curry', 'oregano', 'turmeric', 'garlic', 'cinnamon', 'chili'];
 const SUIT_NAME = {
@@ -441,14 +443,15 @@ const newBd = () => ({ top: 0, lead: 0, moq: 0, coin: 0, cashout: 0, spec: 0 });
 
 // ---------- Game ----------
 class Game {
-  // players: [{ name, agent }]; botRules: { seasonAdvance, scoring }; variants: { saffronCube }
+  // players: [{ name, agent }]; botRules: { seasonAdvance, scoring }
+  // variants: { saffronCube, spec (G8: specialization bonus on/off), endgame (T2: 'cashout' or 'auction') }
   constructor({ seed, players, replay = null, botRules = {}, variants = {} }) {
     if (players.length < 2 || players.length > 5) throw new Error('2-5 players');
     this.seed = String(seed ?? randomSeed());
     this.rngState = hashSeed(this.seed);
     this.n = players.length;
     this.botRules = { seasonAdvance: 'notLeadingNoSaffron', scoring: true, ...botRules };
-    this.variants = { saffronCube: true, ...variants };
+    this.variants = { saffronCube: true, spec: true, endgame: 'cashout', ...variants };
     this.players = players.map((p, i) => ({ id: 'p' + i, idx: i, name: p.name || `Player ${i + 1}`, agent: p.agent, hand: [], stored: [], money: 0, bd: newBd(), st: newStats() }));
     this.hasBot = this.n === 2;
     this.bot = this.hasBot ? { id: 'bot', name: 'Deck Bot', money: 0, bd: newBd(), st: newStats() } : null;
@@ -458,6 +461,8 @@ class Game {
     this.replay = replay ? replay.slice() : null;
     this.reshuffles = 0; this.lotSeq = 0; this.seasonLeaders = [];
     this.hooks = {}; this.moves = []; this.lastBids = null; this.revealing = null;
+    this.taken = []; // U20: lots bought from the current market, shown in place until it is restocked
+    this.finalRound = false; // T2: the final auction is running
     this.recordSnapshots = false; // UI turns this on to animate each step
   }
   async pause(kind, data) { if (this.hooks.pause) await this.hooks.pause(kind, data); this.moves = []; }
@@ -476,7 +481,7 @@ class Game {
     }
     return this.deck.pop();
   }
-  tag() { return this.season ? `S${this.season}${this.auction && (this.phase === 'auction' || this.phase === 'buying') ? ' A' + this.auction : ''}` : 'Setup'; }
+  tag() { return this.season ? `S${this.season}${this.auction && (this.phase === 'auction' || this.phase === 'buying') ? (this.finalRound ? ' Final' : ' A' + this.auction) : ''}` : 'Setup'; }
   say(msg) {
     if (this.players.some(p => p.name === 'You')) {
       msg = msg.replace(/\bYou (buys|stores|cashes|seeds|reveals|chooses|leads|knocks)\b/g, (m, v) => 'You ' + ({ buys: 'buy', stores: 'store', cashes: 'cash', seeds: 'seed', reveals: 'reveal', chooses: 'choose', leads: 'lead', knocks: 'knock' })[v])
@@ -528,8 +533,8 @@ class Game {
       bd: this.players.map(p => ({ ...p.bd })), botBd: this.bot ? { ...this.bot.bd } : null, pos });
   }
   // A lot is its base card plus extra cards; extras can be dealt later (G1).
-  makeLot(card, withExtras = true) {
-    const lot = { id: 'L' + (++this.lotSeq), cards: [{ c: card, fd: false }], pending: !withExtras };
+  makeLot(card, withExtras = true, num = 0) {
+    const lot = { id: 'L' + (++this.lotSeq), num, cards: [{ c: card, fd: false }], pending: !withExtras };
     if (withExtras) this.dealExtras(lot);
     return lot;
   }
@@ -538,7 +543,9 @@ class Game {
     lot.pending = false;
   }
   lotStr(lot) { return lot.cards.map(x => cardStr(x.c)).join(', ') + (lot.pending ? ' (extra cards dealt after storage)' : ''); }
-  logMarket() { this.say(`Market: ${this.market.map((l, k) => `Lot ${k + 1}: ${this.lotStr(l)}`).join(' | ')}`); }
+  // U20: a lot keeps its number until the market is restocked.
+  setMarket(cards, withExtras) { this.market = cards.map((c, k) => this.makeLot(c, withExtras, k + 1)); this.taken = []; }
+  logMarket() { this.say(`Market: ${this.market.map(l => `Lot ${l.num}: ${this.lotStr(l)}`).join(' | ')}`); }
   take(arr, n) { const k = arr.findIndex(c => c.n === n); if (k < 0) throw new Error(`Card ${n} not available`); return arr.splice(k, 1)[0]; }
 
   // One marker step, recorded for the log, statistics and animation.
@@ -612,12 +619,14 @@ class Game {
     if (this.n <= 4) this.say(`Neutral cubes placed on the "4" space${this.n <= 3 ? ' and the "2/3" space' : ''} of every track except Saffron (no "4" cube on Curry).`);
     if (this.n <= 3 && this.variants.saffronCube) this.say(`Neutral cube placed on Saffron space ${SAFFRON_CUBE_SPACE}.`);
     if (this.n <= 3 && !this.variants.saffronCube) this.say('Variant: no Saffron cube.');
+    if (!this.variants.spec) this.say('Option: no specialization bonus.');
+    if (this.variants.endgame === 'auction') this.say('Option: final auction instead of the cash-out.');
     for (let k = 0; k < 7; k++) for (const p of this.players) p.hand.push(this.draw());
     const seedChoices = await this.decideAll(this.players.map(p => [p.idx, { type: 'seed' }]));
     const seeds = [];
     this.players.forEach((p, k) => { const c = this.take(p.hand, seedChoices[k]); seeds.push(c); this.say(`${p.name} seeds the market with ${cardStr(c)}.`); });
     if (this.hasBot) { const c = this.draw(); seeds.push(c); this.say(`Deck Bot seeds the market with ${cardStr(c)}.`); }
-    this.market = seeds.map(c => this.makeLot(c));
+    this.setMarket(seeds, true);
     this.logMarket();
     this.snapshot('Setup');
     await this.pause('market');
@@ -653,11 +662,13 @@ class Game {
       const k = this.market.findIndex(l => l.id === lotId);
       if (k < 0) throw new Error('Bad lot choice');
       const lot = this.market.splice(k, 1)[0];
+      this.taken.push({ num: lot.num, owner: e.owner });
       await this.buy(e.owner, lot);
       await this.pause('buy', { owner: e.owner, lot });
     }
     const lastOfSeason = this.auction === 3;
-    const lastOfGame = this.season === 3 && lastOfSeason;
+    // No new market after the last bids of the game: season 3's third auction with the cash-out, or the final auction (T2).
+    const lastOfGame = this.finalRound || (this.season === 3 && lastOfSeason && this.variants.endgame !== 'auction');
     const next = [];
     for (const e of bids) {
       const cards = e.flips ? e.flips : e.bid.cards;
@@ -666,23 +677,24 @@ class Game {
     }
     if (!lastOfGame) {
       // G1: after a season's last auction, only the base cards show; extras come after storage.
-      this.market = next.map(c => this.makeLot(c, !lastOfSeason));
+      this.setMarket(next, !lastOfSeason);
       this.logMarket();
-    } else this.market = [];
+    } else { this.market = []; this.taken = []; }
     this.lastBids = null;
     this.phase = 'auction';
-    this.snapshot(`S${this.season} A${this.auction}`);
+    this.snapshot(this.finalRound ? 'Final auction' : `S${this.season} A${this.auction}`);
     await this.pause('market', { auctionDone: this.auction });
   }
 
   // Buying: cash coins, move for every spice card, store one card (G3/G4).
   storeOptions(lot) {
+    if (this.finalRound) return []; // T2: nothing is stored in the final auction
     const base = lot.cards[0].c;
     return (NO_STORE_BASE.has(base.suit) ? lot.cards.slice(1) : lot.cards).filter(x => !x.fd).map(x => x.c);
   }
   async buy(owner, lot) {
     const faceup = lot.cards.filter(x => !x.fd).map(x => x.c);
-    this.say(`${this.nameOf(owner)} buys ${lot.cards.map(x => cardStr(x.c)).join(', ')}.`);
+    this.say(`${this.nameOf(owner)} buys lot ${lot.num}: ${lot.cards.map(x => cardStr(x.c)).join(', ')}.`);
     for (const c of faceup) if (c.money) { this.credit(owner, c.money, 'coin'); this.say(`  ${this.nameOf(owner)} cashes ${cardStr(c)}.`); }
     let icon = faceup.filter(c => c.icons > 0);
     if (icon.length > 1) {
@@ -693,6 +705,7 @@ class Game {
     const cards = lot.cards.map(x => x.c);
     if (owner === 'bot') { this.discard.push(...cards); return; }
     const p = this.players[+owner.slice(1)];
+    if (this.finalRound) { this.discard.push(...cards); return; }
     const opts = this.storeOptions(lot);
     let keep = null;
     if (opts.length === 1) keep = opts[0];
@@ -734,6 +747,7 @@ class Game {
       await this.pause('storage', { owner: p.id });
       this.revealing = null;
     }
+    if (this.season === 3 && this.variants.endgame === 'auction') await this.finalAuction();
     // Season scoring, track by track
     this.phase = 'scoring';
     this.say(`Season ${this.season} scoring.`);
@@ -765,23 +779,41 @@ class Game {
       this.say('Stored cards return to hands; each player is dealt 3 more.');
     }
   }
+  // T2: after season 3's end-of-season movement, stored cards return to hand for one more auction.
+  // Lots are the base cards from season 3's last bids; nothing is stored; unbid cards are discarded.
+  // Season 3 scoring follows, so the final auction counts on the tracks.
+  async finalAuction() {
+    for (const lot of this.market) if (lot.pending) this.dealExtras(lot);
+    this.say('Final auction: extra cards dealt to the market lots; stored cards return to hands.');
+    this.logMarket();
+    for (const p of this.players) { p.hand = p.stored; p.stored = []; }
+    this.finalRound = true;
+    this.phase = 'auction';
+    await this.pause('finalStart');
+    await this.runAuction();
+    for (const p of this.players) if (p.hand.length) { this.say(`  ${p.name} discards unbid ${p.hand.map(cardStr).join(', ')}.`); this.discard.push(...p.hand); p.hand = []; }
+    this.finalRound = false;
+  }
   scoreLine() {
     return [...this.players.map(p => `${p.name} ${p.money}`), ...(this.hasBot && this.botRules.scoring ? [`Deck Bot ${this.bot.money}`] : [])].join(', ');
   }
   async finalScoring() {
     this.phase = 'final';
     this.season = 4;
-    this.say('Final cash-out: stored cards revealed.');
-    const bids = this.players.map(p => ({ owner: p.id, bid: bestBid(p.stored) }));
-    let botFlips = null;
-    if (this.hasBot) { const b = this.deckBotBid(); bids.push({ owner: 'bot', bid: b.bid }); botFlips = b.flips; }
-    bids.sort((x, y) => bidKey(y.bid) - bidKey(x.bid));
-    const table = CASHOUT[this.n];
-    bids.forEach((b, r) => { this.credit(b.owner, table[r] ?? 0, 'cashout'); this.say(`  ${r + 1}. ${this.nameOf(b.owner)}: ${b.bid ? bidStr(b.bid) : 'no bid'} → +${table[r] ?? 0}`); });
-    for (const p of this.players) { this.discard.push(...p.stored); p.stored = []; }
-    if (botFlips) this.discard.push(...botFlips);
-    this.say('Specialization bonus.');
-    for (const p of this.players) {
+    let bids = null;
+    if (this.variants.endgame !== 'auction') {
+      this.say('Final cash-out: stored cards revealed.');
+      bids = this.players.map(p => ({ owner: p.id, bid: bestBid(p.stored) }));
+      let botFlips = null;
+      if (this.hasBot) { const b = this.deckBotBid(); bids.push({ owner: 'bot', bid: b.bid }); botFlips = b.flips; }
+      bids.sort((x, y) => bidKey(y.bid) - bidKey(x.bid));
+      const table = CASHOUT[this.n];
+      bids.forEach((b, r) => { this.credit(b.owner, table[r] ?? 0, 'cashout'); this.say(`  ${r + 1}. ${this.nameOf(b.owner)}: ${b.bid ? bidStr(b.bid) : 'no bid'} → +${table[r] ?? 0}`); });
+      for (const p of this.players) { this.discard.push(...p.stored); p.stored = []; }
+      if (botFlips) this.discard.push(...botFlips);
+    }
+    this.say(this.variants.spec ? 'Specialization bonus.' : 'No specialization bonus (option off).');
+    if (this.variants.spec) for (const p of this.players) {
       const u = SPICES.filter(s => this.pos(p.id, s) === 1).length;
       const b = SPEC_BONUS[Math.min(3, u)];
       this.credit(p.id, b, 'spec');
@@ -856,7 +888,7 @@ function evalPos(g, tracks, owner, style = 'v2', plan = null) {
     if (p <= om) v += p >= t.moq ? MOQ_PTS * r * 0.85 : MOQ_PTS * r * 0.4 * (p / t.moq);
     v += 0.5 * (p / t.len) * t.instant;
   }
-  if (isPlayer) {
+  if (isPlayer && g.variants.spec) {
     if (style === 'v2' && plan) {
       const base = SPEC_BONUS[Math.min(3, uPlan)];
       const withOther = SPEC_BONUS[Math.min(3, uPlan + uOther)];
@@ -865,7 +897,7 @@ function evalPos(g, tracks, owner, style = 'v2', plan = null) {
   }
   return v;
 }
-function ctx(g, owner, style) { return { style, plan: style === 'v2' && owner !== 'bot' ? nilPlan(g, owner) : null }; }
+function ctx(g, owner, style) { return { style, plan: style === 'v2' && owner !== 'bot' && g.variants.spec ? nilPlan(g, owner) : null }; }
 function permutations(a) { if (a.length <= 1) return [a]; const out = []; a.forEach((x, i) => { for (const rest of permutations([...a.slice(0, i), ...a.slice(i + 1)])) out.push([x, ...rest]); }); return out; }
 function botBestOrder(g, owner, cards, base, cx = ctx(g, owner, 'v2')) {
   let best = null;
@@ -915,7 +947,8 @@ function botDecide(g, i, req, style = 'v2') {
       for (let a = 0; a < me.hand.length; a++) for (let b = a + 1; b < me.hand.length; b++) if (me.hand[a].suit === me.hand[b].suit) cands.push([me.hand[a], me.hand[b]]);
       const lots = g.market.map(l => lotValue(g, me.id, l, cx)).sort((x, y) => y - x);
       const nOpp = g.n - 1 + (g.hasBot ? 1 : 0);
-      const hv = new Map(me.hand.map(c => [c.n, holdVal(g, me.id, c, cx)]));
+      // T2: in the final auction, unbid cards are discarded, so keeping a card is worth nothing.
+      const hv = new Map(me.hand.map(c => [c.n, g.finalRound ? 0 : holdVal(g, me.id, c, cx)]));
       let best = null;
       for (const cand of cands) {
         if (me.hand.length - cand.length < need) continue;
@@ -995,7 +1028,7 @@ const ic = k => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k
 
 const ui = {
   view: 'home', gen: 0,
-  setup: { n: 3, seats: null, seed: randomSeed(), speed: 'normal', botRule: 'notLeadingNoSaffron', botScoring: true },
+  setup: { n: 3, seats: null, seed: randomSeed(), speed: 'normal', botRule: 'notLeadingNoSaffron', botScoring: true, spec: true, endgame: 'cashout' },
   game: null, pending: null, sel: [], tutorial: false, coachSeen: new Set(), coach: null, paused: false,
   modal: null, viewer: null, peek: 'none', humans: [], result: null, moves: [], sim: null, simRunning: false, logFilter: 'all',
   watch: false, replayOf: null, lastSettings: null,
@@ -1088,7 +1121,7 @@ function bidLabel(cards) {
   if (cards.length === 2) return cards[0].suit !== cards[1].suit ? 'A pair must be two cards of the same spice.' : `Pair of ${SUIT_NAME[cards[0].suit]}, high card ${Math.max(cards[0].n, cards[1].n)}`;
   return `Single card ${cards[0].n}`;
 }
-function potentialSpec(g, owner) { const u = SPICES.filter(s => g.tracks[s].find(m => m.owner === owner).pos === 1).length; return SPEC_BONUS[Math.min(3, u)]; }
+function potentialSpec(g, owner) { if (g.variants && g.variants.spec === false) return 0; const u = SPICES.filter(s => g.tracks[s].find(m => m.owner === owner).pos === 1).length; return SPEC_BONUS[Math.min(3, u)]; }
 function netInfo(g) {
   const o = ui.online, out = { remote: new Set(), online: new Set(), waiting: new Set() };
   if (!o.role || !o.lobby) return out;
@@ -1100,7 +1133,11 @@ function netInfo(g) {
 function humanIdxs(g) { return g.players.filter(p => p.agent === HumanAgent).map(p => p.idx); }
 function phaseLabel(g) {
   if (g.phase === 'setup') return { big: 'Setting up', step: 'Seed the market' };
-  if (g.phase === 'over' || g.phase === 'final' || g.season > 3) return { big: 'Final scoring', step: 'Cash-out and specialization' };
+  if (g.phase === 'over' || g.phase === 'final' || g.season > 3) {
+    const v = g.variants || {}, parts = [v.endgame === 'auction' ? null : 'Cash-out', v.spec === false ? null : 'specialization'].filter(Boolean);
+    return { big: 'Final scoring', step: parts.length ? parts.join(' and ').replace(/^s/, 'S') : 'Final scores' };
+  }
+  if (g.finalRound) return { big: 'Final auction', step: g.phase === 'buying' ? 'Buying lots in bid order; nothing is stored' : 'Bidding with your stored cards' };
   if (g.phase === 'seasonEnd') return { big: `Season ${g.season}: end of season`, step: 'Storage: hands are revealed and move markers' };
   if (g.phase === 'scoring') return { big: `Season ${g.season}: end of season`, step: 'Scoring: leads and MOQ' };
   const a = Math.max(1, g.auction);
@@ -1205,7 +1242,7 @@ async function coachFor(kind) {
 
 // ---------- timing and animation (U2, U3, U6, U12, U13) ----------
 function speedMul() { return window.__fast ? 0 : ({ slow: 1.8, normal: 1, fast: .35, instant: 0 }[ui.setup.speed]); }
-function speedMs(kind) { return ({ market: 700, reveal: 1500, buy: 900, storage: 900, botStorage: 700, scoring: 600, seasonStart: 500, final: 300 }[kind] ?? 600) * speedMul(); }
+function speedMs(kind) { return ({ market: 700, reveal: 1500, buy: 900, storage: 900, botStorage: 700, scoring: 600, seasonStart: 500, finalStart: 900, final: 300 }[kind] ?? 600) * speedMul(); }
 function moveFx(mv) {
   const fx = [];
   for (const k of mv.knocked || []) fx.push({ cls: 'fx-knock', text: k === 'n' ? 'Knocks a cube down' : 'Knockdown!' });
@@ -1243,12 +1280,12 @@ function seasonSummaryOf(g) {
 }
 
 // ---------- game lifecycle ----------
-async function startGame({ seed, seats, botRule, botScoring = true, tutorial = false, replay = null, online = false }) {
+async function startGame({ seed, seats, botRule, botScoring = true, variants = {}, tutorial = false, replay = null, online = false }) {
   const gen = ++ui.gen;
   Object.assign(ui, { tutorial, coachSeen: new Set(), coach: null, modal: null, paused: false, result: null, pending: null, anim: null, toast: null, scoreFx: null, seasonSummary: null, bidRound: null, myBid: null, viewOnly: null, lastMoves: [] });
-  ui.lastSettings = { seats: seats.map(s => ({ ...s })), botRule, botScoring };
+  ui.lastSettings = { seats: seats.map(s => ({ ...s })), botRule, botScoring, variants: { ...variants } };
   const players = seats.map(s => ({ name: s.name, agent: s.human ? HumanAgent : s.remote ? RemoteAgent : BotAgent }));
-  const g = new Game({ seed, players, replay: replay?.decisions || null, botRules: { seasonAdvance: botRule, scoring: botScoring } });
+  const g = new Game({ seed, players, replay: replay?.decisions || null, botRules: { seasonAdvance: botRule, scoring: botScoring }, variants });
   g.recordSnapshots = true;
   if (online) { g.parallel = true; ui.online.pending = new Map(); ui.online.botSeats = new Set(); }
   else if (ui.online.role) leaveOnline();
@@ -1261,7 +1298,8 @@ async function startGame({ seed, seats, botRule, botScoring = true, tutorial = f
     if (gen !== ui.gen) throw new Error('aborted');
     ui.moves = g.moves.slice();
     if (kind === 'reveal') showToast('Bids revealed: buying in bid order');
-    if (kind === 'market' && data?.auctionDone) showToast(`Auction ${data.auctionDone} complete`);
+    if (kind === 'market' && data?.auctionDone) showToast(g.finalRound ? 'Final auction complete' : `Auction ${data.auctionDone} complete`);
+    if (kind === 'finalStart') showToast('Final auction: stored cards return to hands');
     if (kind === 'seasonStart') { showToast(`Season ${g.season} begins`); ui.seasonSummary = null; }
     if ((kind === 'botStorage' || kind === 'storage') && ui.storageToast !== g.season) { ui.storageToast = g.season; showToast(`End of season ${g.season}: storage`); }
     if (kind === 'scoreTrack') { ui.scoreFx = data; render(); if (online) publishState(); await sleep(650 * speedMul()); ui.scoreFx = null; return; }
@@ -1300,7 +1338,7 @@ async function startGame({ seed, seats, botRule, botScoring = true, tutorial = f
 }
 function quitToHome() { if (ui.online.role) leaveOnline(); ui.gen++; Object.assign(ui, { view: 'home', game: null, pending: null, coach: null, modal: null, bidRound: null, anim: null, viewOnly: null }); render(); }
 function replayJSON(r, g) {
-  return JSON.stringify({ format: 'saffron-salt-replay', rulesVersion: RULES_VERSION, engineVersion: ENGINE_VERSION, seed: r.seed, botRule: g.botRules.seasonAdvance, botScoring: g.botRules.scoring,
+  return JSON.stringify({ format: 'saffron-salt-replay', rulesVersion: RULES_VERSION, engineVersion: ENGINE_VERSION, seed: r.seed, botRule: g.botRules.seasonAdvance, botScoring: g.botRules.scoring, variants: { ...g.variants },
     players: g.players.map(p => ({ name: p.name, human: p.agent === HumanAgent || p.agent === RemoteAgent })), decisions: r.decisions }, null, 1);
 }
 
@@ -1318,6 +1356,18 @@ function render() {
 }
 function botRuleSelect(id, val) {
   return `<select id="${id}" data-inp="${id}" aria-label="Deck Bot season-end rule">${BOT_RULES.map(([k, l]) => `<option value="${k}" ${k === val ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+}
+// G8 and T2: rule options for local games, online tables and the simulator.
+function ruleOptionsHTML(prefix, spec, endgame) {
+  return `<label class="check"><input type="checkbox" data-inp="${prefix}Spec" ${spec !== false ? 'checked' : ''}> Specialization bonus <span class="muted">(7 / 17 / 30 for tracks a player never moved on)</span></label>
+    <label for="${prefix}End">Endgame</label><select id="${prefix}End" data-inp="${prefix}End"><option value="cashout" ${endgame !== 'auction' ? 'selected' : ''}>Cash-out (standard)</option><option value="auction" ${endgame === 'auction' ? 'selected' : ''}>Final auction</option></select>
+    <p class="muted" style="margin:0">${endgame === 'auction' ? 'After season 3, stored cards return to hand for one more auction; then season 3 is scored. No cash-out points.' : 'After season 3, stored cards make one last bid for 1st / 2nd / 3rd place points.'}</p>`;
+}
+function optionsText(v) {
+  const out = [];
+  if (v?.spec === false) out.push('no specialization bonus');
+  if (v?.endgame === 'auction') out.push('final auction instead of the cash-out');
+  return out.join('; ');
 }
 function botScoreToggle(act, on) {
   return `<label class="check"><input type="checkbox" data-inp="${act}" ${on ? 'checked' : ''}> Deck Bot keeps score <span class="muted">(off: it still moves and blocks leads, but scores nothing)</span></label>`;
@@ -1343,6 +1393,7 @@ function renderHome() {
       <div class="field"><label for="seed">Seed</label><div class="row"><input id="seed" type="text" value="${esc(s.seed)}" data-inp="seed" style="flex:1"><button class="btn small" data-act="newSeed">New seed</button></div><p class="muted" style="margin:4px 0 0">The same seed deals the same deck, so a game can be rebuilt later.</p></div>
       <div class="field"><span class="lbl">Bot speed</span><div class="seg" role="group" aria-label="Bot speed">${['slow', 'normal', 'fast', 'instant'].map(v => `<button data-act="speed" data-v="${v}" aria-pressed="${s.speed === v}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}</div></div>
       ${s.n === 2 ? `<details class="field"><summary>Deck Bot settings</summary><div style="margin-top:8px;display:grid;gap:8px">${botRuleSelect('botRule', s.botRule)}${botScoreToggle('botScoring', s.botScoring)}</div></details>` : ''}
+      <details class="field" ${optionsText(s) ? 'open' : ''}><summary>Rule options${optionsText(s) ? `: ${esc(optionsText(s))}` : ''}</summary><div style="margin-top:8px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px">${ruleOptionsHTML('setup', s.spec, s.endgame)}</div></details>
       <div class="row"><button class="btn primary" data-act="start">${seats.some(p => p.human) ? 'Start game' : 'Watch bots play'}</button></div>
     </section>
     </div>
@@ -1456,12 +1507,16 @@ function marketHTML(g) {
   const p = ui.pending;
   const picking = p && (p.req.type === 'lot' || p.req.type === 'botLot');
   const pendingNote = g.market.some(l => l.pending) ? '<p class="muted" style="margin:-4px 0 10px;text-align:center">Extra cards are dealt to these lots after end-of-season storage.</p>' : '';
-  return `<section class="box market" aria-label="Market"><h4>Market</h4>${pendingNote}<div class="lots">${g.market.map((l, k) => {
+  const taken = (g.taken || []).map(t => ({ taken: true, ...t }));
+  const slots = [...g.market.map((l, k) => ({ lot: l, num: l.num || k + 1 })), ...taken].sort((a, b) => a.num - b.num);
+  return `<section class="box market" aria-label="Market"><h4>Market</h4>${pendingNote}<div class="lots">${slots.map(x => {
+    if (x.taken) return `<div class="lot taken" aria-label="Lot ${x.num}, bought by ${esc(g.nameOf(x.owner))}"><span class="ln">Lot ${x.num}</span><div class="boughtby">Bought by ${esc(g.nameOf(x.owner))}</div></div>`;
+    const l = x.lot, num = x.num;
     const sel = picking && ui.sel[0] === l.id;
     const base = l.cards[0].c;
     const land = NO_STORE_BASE.has(base.suit);
     const extras = l.pending ? Array.from({ length: base.season }, () => '<div class="card slotcard" aria-label="Extra card, dealt after storage"><span>?</span></div>').join('') : '';
-    return `<div class="lot ${picking ? 'pick' : ''}" ${picking ? `data-act="selLot" data-id="${l.id}" role="button" tabindex="0" aria-pressed="${sel}"` : ''}><span class="ln">Lot ${k + 1}</span><div class="cards">${l.cards.map((x, j) => cardHTML(x.c, { land: j === 0 && land })).join('')}${extras}</div></div>`;
+    return `<div class="lot ${picking ? 'pick' : ''}" ${picking ? `data-act="selLot" data-id="${l.id}" role="button" tabindex="0" aria-pressed="${sel}"` : ''}><span class="ln">Lot ${num}</span><div class="cards">${l.cards.map((x, j) => cardHTML(x.c, { land: j === 0 && land })).join('')}${extras}</div></div>`;
   }).join('')}</div></section>`;
 }
 function bidsHTML(g) {
@@ -1537,23 +1592,25 @@ function promptHTML(g) {
   }
   if (t === 'lot' || t === 'botLot') {
     const k = g.market.findIndex(l => l.id === ui.sel[0]);
+    const lotNum = k >= 0 ? g.market[k].num || k + 1 : 0;
     const head = t === 'lot' ? 'Choose a lot' : 'Choose a lot for the Deck Bot';
     const text = t === 'lot' ? 'Select a lot to preview it on the tracks, then confirm.' : 'The Deck Bot buys next, and you choose which lot it gets. Select one to preview the bot’s moves.';
     const pv = previewFor(g);
     const pvText = pv ? `<div class="pv"><strong>${t === 'lot' ? 'You would' : 'The bot would'}:</strong> ${pv.money ? `cash ${pv.money} points; ` : ''}${pv.desc.length ? pv.desc.map(d => `${esc(cardStr(CARDS[d.n]))}: ${esc(d.text)}`).join('; ') : 'not move on any track'}${pv.multi ? ' <span class="muted">(best order shown; you’ll choose the order after buying)</span>' : ''}</div>` : '';
-    return `<div class="prompt"><div><h3>${who}${head}</h3><p>${text}</p>${pvText}</div><div class="actions"><button class="btn primary" data-act="confirm" ${k >= 0 ? '' : 'disabled'}>${k >= 0 ? `Buy lot ${k + 1}${t === 'botLot' ? ' for the bot' : ''}` : 'Buy lot'}</button></div></div>`;
+    return `<div class="prompt"><div><h3>${who}${head}</h3><p>${text}</p>${pvText}</div><div class="actions"><button class="btn primary" data-act="confirm" ${k >= 0 ? '' : 'disabled'}>${k >= 0 ? `Buy lot ${lotNum}${t === 'botLot' ? ' for the bot' : ''}` : 'Buy lot'}</button></div></div>`;
   }
   if (t === 'order' || t === 'endOrder') {
     const sel = ui.sel[0];
     return `<div class="prompt orderprompt"><div><h3>${who}Choose the order</h3><p>These cards affect each other on the tracks. Pick the order to apply them.</p>${p.req.groups.map((gr, k) => `<button class="opt ${gr.recommended ? 'rec' : ''}" data-act="selOpt" data-k="${k}" aria-pressed="${sel === k}">${gr.recommended ? `<span class="rectag">Recommended: ${esc(gr.why)}</span>` : ''}<span class="optcards">${gr.desc.map((d, j) => `<span class="optstep">${cardHTML(CARDS[d.n], { sm: true, ord: j + 1 })}<span>${esc(d.text)}</span></span>`).join('')}</span>${gr.gain ? `<span class="muted">+${gr.gain} points</span>` : ''}</button>`).join('')}</div><div class="actions"><button class="btn primary" data-act="confirm" ${sel !== undefined ? '' : 'disabled'}>Apply in this order</button></div></div>`;
   }
   if (t === 'store') {
-    return `<div class="prompt"><div><h3>${who}Keep one card</h3><p>Choose a card to store. Stored cards come back to your hand next season, or make your cash-out bid after season 3.</p><div class="cards">${p.req.cards.map(n => cardHTML(CARDS[n], { pick: true, act: 'selCard', sel: ui.sel[0] === n })).join('')}</div></div><div class="actions"><button class="btn primary" data-act="confirm" ${ui.sel.length ? '' : 'disabled'}>Store card</button></div></div>`;
+    return `<div class="prompt"><div><h3>${who}Keep one card</h3><p>Choose a card to store. Stored cards come back to your hand next season${g.variants?.endgame === 'auction' ? ', or for the final auction after season 3' : ', or make your cash-out bid after season 3'}.</p><div class="cards">${p.req.cards.map(n => cardHTML(CARDS[n], { pick: true, act: 'selCard', sel: ui.sel[0] === n })).join('')}</div></div><div class="actions"><button class="btn primary" data-act="confirm" ${ui.sel.length ? '' : 'disabled'}>Store card</button></div></div>`;
   }
   return '';
 }
 function cashoutHTML(g) {
   if (g.season !== 3) return '';
+  if (g.variants?.endgame === 'auction') return g.finalRound ? '' : `<p class="cashout" title="Final auction option">After season 3: your stored cards return to your hand for one final auction (nothing is stored, unbid cards are discarded).</p>`;
   const table = CASHOUT[g.n];
   const ord = ['1st', '2nd', '3rd', '4th', '5th'];
   return `<p class="cashout" title="After season 3, each player’s stored cards make one last bid">Cash-out after season 3: ${table.map((v, k) => `${ord[k]} ${v}`).join(', ')}${g.hasBot ? ' (the Deck Bot bids too)' : ''}</p>`;
@@ -1644,7 +1701,7 @@ function renderResults() {
   ];
   const view = ui.viewOnly;
   $app.innerHTML = `<div class="results">
-    <div class="row" style="justify-content:space-between"><span class="muted">Seed ${esc(r.seed)}, version ${esc(r.rulesVersion)}${view ? `, played ${esc(new Date(view.at).toLocaleString())}` : ''}</span><span class="row"><button class="btn small" data-act="log">Game log</button><button class="btn small" data-act="saveLog">Save log</button>${r.decisions && ui.online.role !== 'guest' ? '<button class="btn small" data-act="saveReplay">Save replay</button>' : ''}</span></div>
+    <div class="row" style="justify-content:space-between"><span class="muted">Seed ${esc(r.seed)}, version ${esc(r.rulesVersion)}${optionsText(r.variants) ? `, options: ${esc(optionsText(r.variants))}` : ''}${view ? `, played ${esc(new Date(view.at).toLocaleString())}` : ''}</span><span class="row"><button class="btn small" data-act="log">Game log</button><button class="btn small" data-act="saveLog">Save log</button>${r.decisions && ui.online.role !== 'guest' ? '<button class="btn small" data-act="saveReplay">Save replay</button>' : ''}</span></div>
     <h1>${esc(headline)}</h1>
     <div class="podium">${all.map((p, k) => `<div class="pl"><span class="rk">${k + 1}</span><span>${dotHTML(p.owner)} ${esc(p.name)}</span><span class="pts">${p.score}</span></div>`).join('')}${r.bot && !botScores ? '<p class="muted">The Deck Bot was not keeping score.</p>' : ''}</div>
     ${view ? '' : feedbackHTML(r)}
@@ -1708,7 +1765,7 @@ function recordGame(r, g, type) {
   const humans = g.players.filter(p => p.agent === HumanAgent || p.agent === RemoteAgent).length;
   const rec = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(),
-    seed: r.seed, version: r.rulesVersion, n: g.n, hasBot: g.hasBot, botScoring: g.botRules.scoring,
+    seed: r.seed, version: r.rulesVersion, n: g.n, hasBot: g.hasBot, botScoring: g.botRules.scoring, variants: { ...g.variants },
     humans, bots: g.n - humans, names: g.players.map(p => p.name),
     scores: [...r.players.map(p => [p.name, p.score]), ...(r.bot && r.bot.scoring !== false ? [['Deck Bot', r.bot.score]] : [])].sort((a, b) => b[1] - a[1]),
     winner: r.winners.map(i => r.players[i].name).join(' and '), type, table: ui.online.code || null, feedback: false,
@@ -1774,7 +1831,7 @@ function renderLogs() {
 
 // ---------- Simulator ----------
 function renderSim() {
-  const s = ui.sim ||= { counts: [2, 3, 4, 5], games: 250, botRule: 'notLeadingNoSaffron', botScoring: true, saffronCube: true, progress: 0, report: null };
+  const s = ui.sim ||= { counts: [2, 3, 4, 5], games: 250, botRule: 'notLeadingNoSaffron', botScoring: true, saffronCube: true, spec: true, endgame: 'cashout', progress: 0, report: null };
   $app.innerHTML = `<div class="results">
     <div class="row" style="justify-content:space-between"><h1 style="margin:0">Simulator</h1><button class="btn small" data-act="home">Back to menu</button></div>
     <p>Every seat is played by the bot. Seeds run sim-&lt;players&gt;-1, sim-&lt;players&gt;-2 and so on, so results are repeatable.</p>
@@ -1783,6 +1840,7 @@ function renderSim() {
       <div class="field"><span class="lbl">Games per player count</span><div class="seg" role="group" aria-label="Games per player count">${[100, 250, 500, 1000].map(n => `<button data-act="simGames" data-v="${n}" aria-pressed="${s.games === n}">${n}</button>`).join('')}</div></div>
       <div class="field"><label for="simBot">Deck Bot rule (2 players)</label>${botRuleSelect('simBot', s.botRule)}<div style="margin-top:6px">${botScoreToggle('simBotScoring', s.botScoring)}</div></div>
       <div class="field"><label class="check"><input type="checkbox" data-inp="simCube" ${s.saffronCube ? 'checked' : ''}> Saffron cube on space ${SAFFRON_CUBE_SPACE} in 2–3 player games <span class="muted">(standard; untick to test without it)</span></label></div>
+      <div class="field" style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px">${ruleOptionsHTML('sim', s.spec, s.endgame)}</div>
       <div class="row"><button class="btn primary" data-act="runSim" ${ui.simRunning || !s.counts.length ? 'disabled' : ''}>${ui.simRunning ? 'Running…' : 'Run simulation'}</button>${s.report ? '<button class="btn" data-act="saveSim">Save report</button>' : ''}</div>
       ${ui.simRunning ? `<div class="progress" style="margin-top:14px" role="progressbar" aria-valuenow="${Math.round(s.progress * 100)}" aria-valuemin="0" aria-valuemax="100"><div style="width:${s.progress * 100}%"></div></div>` : ''}
     </section>
@@ -1793,13 +1851,13 @@ async function runSim() {
   const s = ui.sim; ui.simRunning = true; s.report = null; s.progress = 0; render();
   const gen = ui.gen;
   const total = s.counts.length * s.games; let done = 0;
-  const html = [], md = [`# Saffron Salt simulation`, `Version ${RULES_VERSION}, engine ${ENGINE_VERSION}. ${s.games} games per player count. Deck Bot rule: ${s.botRule}${s.botScoring ? '' : ' (not scoring)'}.${s.saffronCube ? '' : ' Variant: no Saffron cube in 2–3 player games.'}`, ''];
+  const html = [], md = [`# Saffron Salt simulation`, `Version ${RULES_VERSION}, engine ${ENGINE_VERSION}. ${s.games} games per player count. Deck Bot rule: ${s.botRule}${s.botScoring ? '' : ' (not scoring)'}.${s.saffronCube ? '' : ' Variant: no Saffron cube in 2–3 player games.'}${optionsText(s) ? ` Options: ${optionsText(s)}.` : ''}`, ''];
   const mean = a => a.reduce((x, y) => x + y, 0) / (a.length || 1);
   const pct = x => `${Math.round(100 * x)}%`, f1 = x => x.toFixed(1);
   for (const n of s.counts.slice().sort()) {
     const games = [];
     for (let k = 1; k <= s.games; k++) {
-      const g = new Game({ seed: `sim-${n}-${k}`, players: Array.from({ length: n }, (_, i) => ({ name: `Bot ${i + 1}`, agent: BotAgent })), botRules: { seasonAdvance: s.botRule, scoring: s.botScoring }, variants: { saffronCube: s.saffronCube } });
+      const g = new Game({ seed: `sim-${n}-${k}`, players: Array.from({ length: n }, (_, i) => ({ name: `Bot ${i + 1}`, agent: BotAgent })), botRules: { seasonAdvance: s.botRule, scoring: s.botScoring }, variants: { saffronCube: s.saffronCube, spec: s.spec, endgame: s.endgame } });
       games.push(await g.run());
       done++;
       if (k % 10 === 0) { s.progress = done / total; if (ui.view === 'sim') render(); await sleep(0); if (gen !== ui.gen) { ui.simRunning = false; return; } }
@@ -1845,7 +1903,7 @@ function startReplay() {
     if (d.format !== 'saffron-salt-replay') throw new Error('This is not a Saffron Salt replay file.');
     if (d.rulesVersion !== RULES_VERSION) throw new Error(`This replay was recorded with version ${d.rulesVersion}; this game is version ${RULES_VERSION}, so it can’t be replayed exactly.`);
     ui.replayError = null;
-    startGame({ seed: d.seed, seats: d.players.map(p => ({ name: p.name, human: false })), botRule: d.botRule, botScoring: d.botScoring !== false, replay: d });
+    startGame({ seed: d.seed, seats: d.players.map(p => ({ name: p.name, human: false })), botRule: d.botRule, botScoring: d.botScoring !== false, variants: d.variants || {}, replay: d });
   } catch (e) { ui.replayError = /^This /.test(e.message) ? e.message : 'The replay could not be read. Check that the whole file was pasted.'; ui.view = 'load'; render(); }
 }
 
@@ -1982,7 +2040,7 @@ async function hostCreate() {
     ? { kind: 'host', name: (o.name || 'Host').trim().slice(0, 24), key: net.me }
     : i <= humans ? { kind: 'online', name: '', key: null } : { kind: 'none', name: '', key: null });
   if (demo) try { localStorage.setItem(HOST_NAME_KEY, seats[0].name); } catch { }
-  const lobby = { code, status: 'lobby', n: humans + 1, seats, botRule: o.botRule, botScoring: true, created: Date.now(), v: 3, demo };
+  const lobby = { code, status: 'lobby', n: humans + 1, seats, botRule: o.botRule, botScoring: true, spec: true, endgame: 'cashout', created: Date.now(), v: 3, demo };
   try { await tableDoc(code).set(lobby); }
   catch (e) { o.err = net.backend === 'relay' ? 'This table could not be created. The server’s relay.php didn’t accept it; check that the folder is writable.' : 'This table could not be created. Only people in your organization can host; invited guests can join a table.'; render(); return; }
   const tr = net.room.join(`table-${code.toLowerCase()}`);
@@ -2084,7 +2142,7 @@ async function hostStart() {
   L.status = 'playing';
   o.writeLobby({ ...L });
   const seats = L.seats.map((s, i) => ({ name: s.name || `Player ${i + 1}`, human: s.kind === 'host', remote: s.kind === 'online' }));
-  startGame({ seed: L.demo && L.n === DEMO_PLAYERS ? DEMO_SEED : randomSeed(), seats, botRule: L.botRule, botScoring: L.botScoring !== false, online: true });
+  startGame({ seed: L.demo && L.n === DEMO_PLAYERS ? DEMO_SEED : randomSeed(), seats, botRule: L.botRule, botScoring: L.botScoring !== false, variants: { spec: L.spec !== false, endgame: L.endgame === 'auction' ? 'auction' : 'cashout' }, online: true });
 }
 function snapshotFor(g) {
   const o = ui.online;
@@ -2093,10 +2151,10 @@ function snapshotFor(g) {
   const r = ui.result;
   return {
     v: 1, code: o.code, t: Date.now(), seed: g.seed, n: g.n, season: g.season, auction: g.auction, phase: g.phase, hasBot: g.hasBot,
-    botMoney: g.bot ? g.bot.money : null, botRule: g.botRules.seasonAdvance,
+    botMoney: g.bot ? g.bot.money : null, botRule: g.botRules.seasonAdvance, variants: { ...g.variants }, finalRound: !!g.finalRound,
     players: g.players.map(p => ({ id: p.id, idx: p.idx, name: p.name, money: p.money, hand: p.hand.map(c => c.n), stored: p.stored.map(c => c.n) })),
     tracks: g.tracks,
-    market: g.market.map(l => ({ id: l.id, cards: l.cards.map(x => ({ n: x.c.n, fd: x.fd })) })),
+    market: g.market.map(l => ({ id: l.id, num: l.num, pending: !!l.pending, cards: l.cards.map(x => ({ n: x.c.n, fd: x.fd })) })), taken: g.taken || [],
     lastBids: g.lastBids ? g.lastBids.map(b => ({ owner: b.owner, cards: b.bid.cards.map(c => c.n) })) : null,
     revealing: g.revealing ? { owner: g.revealing.owner, cards: g.revealing.cards.map(c => c.n) } : null,
     moves: ui.moves, mvKey: ui.mvKey || 0, log: g.log, waiting, online: [...o.online],
@@ -2139,9 +2197,10 @@ function viewFromState(st) {
   return {
     remote: true, seed: st.seed, n: st.n, season: st.season, auction: st.auction, phase: st.phase, hasBot: st.hasBot,
     bot: st.hasBot ? { money: st.botMoney, st: st.botStats } : null, botRules: { seasonAdvance: st.botRule, scoring: st.botScoring !== false }, bidReady: st.bidReady,
+    variants: st.variants || {}, finalRound: !!st.finalRound, taken: st.taken || [],
     players: st.players.map(p => ({ ...p, hand: p.hand.map(card), stored: p.stored.map(card) })),
     tracks: st.tracks,
-    market: st.market.map(l => ({ id: l.id, cards: l.cards.map(x => ({ c: card(x.n), fd: x.fd })) })),
+    market: st.market.map(l => ({ id: l.id, num: l.num, pending: !!l.pending, cards: l.cards.map(x => ({ c: card(x.n), fd: x.fd })) })),
     lastBids: st.lastBids ? st.lastBids.map(b => ({ owner: b.owner, bid: { cards: b.cards.map(card) } })) : null,
     revealing: st.revealing ? { owner: st.revealing.owner, cards: st.revealing.cards.map(card) } : null,
     log: st.log, waiting: st.waiting || [], online: st.online || [],
@@ -2253,6 +2312,8 @@ function renderLobby() {
     <p>${host ? `Give this code to the other players. They open ${net.backend === 'relay' ? esc(location.href.split('#')[0]) : 'this page'}, choose Play online, and join with it.` : 'Table code'}</p>
     <section class="panel"><h2>Seats</h2>${host ? '<p class="muted" style="margin:-6px 0 12px">Choose who sits in each seat. Players who join fill the Human seats in order. With only two seats filled, the Deck Bot joins as a third bidder.</p>' : ''}${L.seats.map(seatRow).filter((_, i) => !L.demo || i < DEMO_PLAYERS).join('')}${L.demo ? `<p class="muted" style="margin:10px 0 0">Publisher demo: 4 players, demo deal (seed ${DEMO_SEED}). Set any seat to Bot if fewer people join.</p>` : ''}<p style="margin:12px 0 0">${status}</p>
     ${host && filled === 2 ? `<details class="field" style="margin-top:12px"><summary>Deck Bot settings</summary><div style="margin-top:8px;display:grid;gap:8px">${botRuleSelect('lobBot', L.botRule)}${botScoreToggle('lobBotScoring', L.botScoring !== false)}</div></details>` : ''}
+    ${host && !playing ? `<details class="field" style="margin-top:12px" ${optionsText(L) ? 'open' : ''}><summary>Rule options${optionsText(L) ? `: ${esc(optionsText(L))}` : ''}</summary><div style="margin-top:8px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px">${ruleOptionsHTML('lob', L.spec, L.endgame)}</div></details>` : ''}
+    ${!host && optionsText(L) ? `<p class="muted" style="margin:10px 0 0">Rule options: ${esc(optionsText(L))}.</p>` : ''}
     ${host ? `<div class="row" style="margin-top:12px"><button class="btn primary" data-act="hostStart" ${open || filled < 2 ? 'disabled' : ''}>Start game</button></div><p class="muted" style="margin:10px 0 0">Keep this page open until the game ends: the game runs in your browser.</p>` : ''}</section>
   </div>`;
 }
@@ -2284,7 +2345,7 @@ function fbMeta() {
   const scoreLine = [...r.players.map(p => `${p.name} ${p.score}`), ...(r.bot ? [`Deck Bot ${r.bot.score}`] : [])].join(', ');
   const m = { seed: r.seed, rulesVersion: r.rulesVersion, engineVersion: r.engineVersion, playerCount: r.playerCount, scoreLine,
     winners: r.winners.map(i => r.players[i].name), players: r.players.map(p => ({ name: p.name, score: p.score, breakdown: p.breakdown })),
-    bot: r.bot || null, botRule: g?.botRules?.seasonAdvance || null, botScoring: g?.botRules?.scoring ?? null, online: ui.online.role || null, table: ui.online.code || null, submittedAt: new Date().toISOString() };
+    bot: r.bot || null, botRule: g?.botRules?.seasonAdvance || null, botScoring: g?.botRules?.scoring ?? null, variants: g?.variants || null, online: ui.online.role || null, table: ui.online.code || null, submittedAt: new Date().toISOString() };
   if (r.decisions && ui.online.role !== 'guest' && g?.players?.[0]?.agent) m.replay = JSON.parse(replayJSON(r, g));
   return m;
 }
@@ -2391,6 +2452,12 @@ document.addEventListener('change', e => {
   else if (k === 'simBot') ui.sim.botRule = v;
   else if (k === 'simBotScoring') ui.sim.botScoring = on;
   else if (k === 'simCube') ui.sim.saffronCube = on;
+  else if (k === 'setupSpec') { ui.setup.spec = on; render(); }
+  else if (k === 'setupEnd') { ui.setup.endgame = v; render(); }
+  else if (k === 'simSpec') ui.sim.spec = on;
+  else if (k === 'simEnd') ui.sim.endgame = v;
+  else if (k === 'lobSpec') { ui.online.lobby.spec = on; ui.online.writeLobby({ ...ui.online.lobby }); render(); }
+  else if (k === 'lobEnd') { ui.online.lobby.endgame = v; ui.online.writeLobby({ ...ui.online.lobby }); render(); }
   else if (k === 'onBot') ui.online.botRule = v;
   else if (k === 'lobBot') { ui.online.botRule = v; ui.online.lobby.botRule = v; ui.online.writeLobby({ ...ui.online.lobby }); }
   else if (k === 'lobBotScoring') { ui.online.lobby.botScoring = on; ui.online.writeLobby({ ...ui.online.lobby }); }
@@ -2410,7 +2477,7 @@ function act(a, el) {
     case 'speed': ui.setup.speed = el.dataset.v; break;
     case 'start': {
       const seats = ui.setup.seats.slice(0, ui.setup.n).map((s, i) => ({ name: s.name.trim() || (s.human ? `Player ${i + 1}` : BOT_NAMES[i]), human: s.human }));
-      startGame({ seed: ui.setup.seed.trim() || randomSeed(), seats, botRule: ui.setup.botRule, botScoring: ui.setup.botScoring });
+      startGame({ seed: ui.setup.seed.trim() || randomSeed(), seats, botRule: ui.setup.botRule, botScoring: ui.setup.botScoring, variants: { spec: ui.setup.spec, endgame: ui.setup.endgame } });
       ui.setup.seed = randomSeed();
       return;
     }
@@ -2451,8 +2518,8 @@ function act(a, el) {
       else if (g && r.decisions) saveFile(`saffron-salt-${r.seed}-replay.json`, replayJSON(r, g));
       return;
     }
-    case 'again': startGame({ seed: randomSeed(), seats: ui.lastSettings.seats, botRule: ui.lastSettings.botRule, botScoring: ui.lastSettings.botScoring, online: ui.online.role === 'host' }); return;
-    case 'sameSeed': startGame({ seed: ui.result.seed, seats: ui.lastSettings.seats, botRule: ui.lastSettings.botRule, botScoring: ui.lastSettings.botScoring, online: ui.online.role === 'host' }); return;
+    case 'again': startGame({ seed: randomSeed(), seats: ui.lastSettings.seats, botRule: ui.lastSettings.botRule, botScoring: ui.lastSettings.botScoring, variants: ui.lastSettings.variants, online: ui.online.role === 'host' }); return;
+    case 'sameSeed': startGame({ seed: ui.result.seed, seats: ui.lastSettings.seats, botRule: ui.lastSettings.botRule, botScoring: ui.lastSettings.botScoring, variants: ui.lastSettings.variants, online: ui.online.role === 'host' }); return;
     case 'clearSel': ui.sel = []; break;
     case 'openDemo': openDemo(); return;
     case 'openOnline': ui.online.demo = false; ui.view = 'online'; ui.online.status = ui.online.status === 'ready' ? 'ready' : 'connecting'; netConnect().then(ok => { ui.online.status = ok ? 'ready' : 'none'; if (ui.view === 'online') render(); }); break;
@@ -2522,6 +2589,9 @@ const RULES_HTML = `<button class="btn small close" data-act="closeModal">Close<
 <p><strong>Cash-out.</strong> After season 3, everyone reveals their three stored cards and makes the best bid they can. Points by rank: 2–3 players 7 / 2 / 0; 4 players 10 / 5 / 2 / 0; 5 players 15 / 10 / 5 / 2 / 0.</p>
 <p><strong>Specialization.</strong> Score a bonus for tracks your marker never left: 7 for one, 17 for two, 30 for three or more.</p>
 <p>Most points wins.</p>
+<h3>Rule options (for testing)</h3>
+<p><strong>Specialization bonus off.</strong> Nobody scores the bonus for untouched tracks.</p>
+<p><strong>Final auction</strong> (instead of the cash-out). After season 3’s end-of-season movement, the waiting lots get their extra cards and your three stored cards return to your hand. Hold one more auction with the usual bidding rules (the Deck Bot bids too). Buy lots as usual, cashing coins and moving on the tracks, but store nothing. Discard the cards you didn’t bid and all bid cards. Then score season 3. There are no cash-out points.</p>
 <h3>Two players: the Deck Bot</h3>
 <p>The Deck Bot is a third bidder run from the deck. To bid, flip a card; if it's 57 or higher, flip one more, otherwise flip two more. Its bid is the best bid among those cards, and its highest bid card goes to the market afterward. If the bot bids highest, the lowest bidder chooses its lot; if it's second, the highest bidder chooses; if it's last, it gets the remaining lot. The bot moves on the tracks like a player but stores nothing. At the end of each season it goes first in storage: it advances one space on each track it is not leading, except Saffron (a tie for the lead counts as not leading). It scores like a player, and you must be ahead of it to lead a track. You can choose to play without keeping the bot’s score: it still moves and blocks leads, but scores nothing.</p>`;
 

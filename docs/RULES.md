@@ -1,6 +1,6 @@
-# Saffron Salt — rules as implemented (v1.21c)
+# Saffron Salt — rules as implemented (v1.22a)
 
-This is the rules reference for the digital playtest edition, version 1.21c. It supersedes the analog v1.20 rules document wherever they differ; the differences are listed at the end. Points replace the physical coins.
+This is the rules reference for the digital playtest edition, version 1.22a. It supersedes the analog v1.20 rules document wherever they differ; the differences are listed at the end. Points replace the physical coins.
 
 ## Goal
 
@@ -84,6 +84,18 @@ Three seasons, each with three auctions, then the end of the season.
 2. **Specialization.** Each player scores a bonus for tracks their marker never left: 7 for one, 17 for two, 30 for three or more.
 3. Most points wins; tied players share the win.
 
+## Rule options (v1.22a, for testing)
+
+Both default to the standard game above.
+
+- **Specialization bonus: off.** Nobody scores the specialization bonus.
+- **Endgame: Final auction** (instead of the cash-out):
+  1. After season 3's end-of-season movement (Deck Bot first, then hands), the waiting base cards get their extra cards and each player's three stored cards return to their hand.
+  2. Hold one more auction with the normal bidding rules (one card, or a pair). In 2-player games the Deck Bot bids and takes a lot as usual.
+  3. Buy lots as usual (cash coins, move up the tracks), but **store nothing**. Discard every bid card and every card left in hand; unbid cards don't move anyone.
+  4. Then score season 3 (leads and MOQ), so the final auction counts on the tracks.
+  5. No cash-out points. Specialization follows its own option.
+
 ## Two players: the Deck Bot
 
 - **Bidding:** flip a card from the deck. If it's 57 or higher, flip one more; otherwise flip two more. Its bid is the best bid among those cards. Afterward its highest bid card goes to the market and the other flipped cards are discarded.
@@ -99,3 +111,4 @@ Three seasons, each with three auctions, then the end of the season.
 | v1.21a | Saffron and coin lots are dealt **faceup**; their base card can't be stored. Facedown cards never move or cash. After a season's third auction, the new lots get their extras only after end-of-season storage. Optional Deck Bot scoring. Bids can be changed until all are in. |
 | v1.21b | Neutral cube on Saffron space 4 in 2–3 player games. |
 | v1.21c | Market-seeding choices can be changed until all are in. |
+| v1.22a | Rule options: specialization bonus on/off; endgame Cash-out or Final auction. Lots keep their numbers until the market is restocked (display only). |

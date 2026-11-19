@@ -34,6 +34,7 @@ cd tools/browser-tests
 ./serve.sh &               # test copy of game/ at http://localhost:8772 (test password pw123)
 python3 test_local.py      # single device, feedback, game logs, replay, pass-and-play change
 python3 test_online.py     # host and guest in two browsers, both change a choice, results must match
+python3 test_options.py    # rule options (no specialization, final auction) locally and online; greyed bought lots
 ```
 
 On Windows, run the server in one PowerShell window and the tests in another:
@@ -43,6 +44,7 @@ cd tools\browser-tests
 powershell -ExecutionPolicy Bypass -File .\serve.ps1   # same as serve.sh; Ctrl+C stops it
 py test_local.py
 py test_online.py
+py test_options.py
 ```
 
 ## Restoring after a lost workspace
